@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>XANY - COLLECTIVE INTELLIGENCE</title>
+    <style>
+      /* --- 基本設定 --- */
+      :root {
+        --bg-color: #000000;
+        --text-color: #ffffff;
+        --accent-color: #00f3ff;
+        --accent-secondary: #4a90e2;
+      }
+
+      body {
+        margin: 0;
+        background-color: var(--bg-color);
+        font-family: "Helvetica Neue", Arial, sans-serif;
+        color: var(--text-color);
+        height: 500vh;
+        overflow-x: hidden;
+        overflow-y: scroll;
+        user-select: none;
+      }
+
+      /* --- レイヤー構成 --- */
+      #webgl-container {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100vh;
+        z-index: 0;
+        pointer-events: none;
+      }
+
+      #css3d-container {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100vh;
+        z-index: 5;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 1s ease;
+      }
+
+      #ui-container {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100vh;
+        z-index: 10;
+        pointer-events: none;
+        transition: opacity 0.5s;
+      }
+
+      /* --- 詳細モード時の変化 --- */
+      body.detail-mode {
+        height: 4000vh; /* スクロール長く */
+      }
+
+      body.detail-mode #css3d-container {
+        opacity: 1;
+        pointer-events: auto;
+      }
+      body.detail-mode #ui-container {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      /* --- UI Components --- */
+      .section {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100vh;
+        display: flex;
+        align-items: center;
+        padding: 0 10%;
+        box-sizing: border-box;
+        transition: opacity 0.5s, transform 0.5s;
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      .section.active {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
+      .text-wrap {
+        pointer-events: auto;
+        max-width: 500px;
+        background: rgba(0, 0, 0, 0.6);
+        padding: 40px;
+        border-radius: 4px;
+        backdrop-filter: blur(5px);
+        border-left: 4px solid var(--accent-color);
+        box-shadow: 0 0 50px rgba(0, 243, 255, 0.1);
+      }
+
+      h2 {
+        font-size: 3rem;
+        margin: 0 0 10px 0;
+        line-height: 1;
+        font-weight: 200;
+        color: #fff;
+        letter-spacing: 2px;
+      }
+      .tag {
+        font-size: 0.8rem;
+        letter-spacing: 4px;
+        color: var(--accent-color);
+        display: block;
+        margin-bottom: 20px;
+        font-weight: bold;
+        text-shadow: 0 0 10px var(--accent-color);
+      }
+      p {
+        font-size: 0.95rem;
+        color: #eee;
+        line-height: 1.8;
+        margin-bottom: 30px;
+      }
+
+      .enter-btn {
+        background: rgba(0, 243, 255, 0.1);
+        border: 1px solid var(--accent-color);
+        color: var(--accent-color);
+        padding: 15px 40px;
+        border-radius: 0;
+        cursor: pointer;
+        transition: 0.3s;
+        font-size: 0.9rem;
+        letter-spacing: 3px;
+        font-weight: bold;
+        pointer-events: auto;
+      }
+      .enter-btn:hover {
+        background: var(--accent-color);
+        color: #000;
+        box-shadow: 0 0 30px var(--accent-color);
+      }
+
+      .section:nth-child(even) {
+        justify-content: flex-end;
+        text-align: right;
+      }
+      .section:nth-child(even) .text-wrap {
+        border-left: none;
+        border-right: 4px solid var(--accent-secondary);
+      }
+
+      /* --- Phone Node --- */
+      .phone-node {
+        width: 300px;
+        height: 500px;
+        background: rgba(0, 0, 0, 0.8);
+        border: 1px solid #333;
+        box-shadow: 0 0 20px rgba(0, 0, 0, 0.8);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        transition: border-color 0.3s, box-shadow 0.3s;
+        cursor: grab;
+      }
+      .phone-node:hover {
+        box-shadow: 0 0 40px rgba(255, 255, 255, 0.4);
+        border-color: #fff;
+        z-index: 100;
+      }
+      .phone-node.dragging {
+        cursor: grabbing;
+        border-color: var(--accent-color);
+      }
+
+      .header-bar {
+        width: 100%;
+        height: 30px;
+        background: #1a1a1a;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 10px;
+        box-sizing: border-box;
+        font-size: 0.7rem;
+        color: #888;
+        border-bottom: 1px solid #333;
+      }
+      .iframe-container {
+        flex: 1;
+        position: relative;
+        background: #fff;
+      }
+      iframe {
+        width: 100%;
+        height: 100%;
+        border: none;
+        position: relative;
+        z-index: 2;
+        pointer-events: auto;
+      }
+
+      .fallback-visual {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        background: #f5f5f5;
+        z-index: 1;
+        color: #333;
+      }
+
+      /* --- Overlays --- */
+      #expanded-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.9);
+        z-index: 9999;
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        backdrop-filter: blur(10px);
+        opacity: 0;
+        transition: opacity 0.3s;
+      }
+      #expanded-overlay.active {
+        display: flex;
+        opacity: 1;
+      }
+      #expanded-content {
+        width: 90%;
+        height: 90%;
+        background: white;
+        border-radius: 8px;
+        position: relative;
+        box-shadow: 0 0 50px rgba(0, 0, 0, 0.5);
+        overflow: hidden;
+      }
+      #expanded-iframe {
+        width: 100%;
+        height: 100%;
+        border: none;
+      }
+      #close-expanded {
+        position: absolute;
+        top: -40px;
+        right: 0;
+        color: white;
+        background: none;
+        border: none;
+        font-size: 1rem;
+        cursor: pointer;
+        pointer-events: auto;
+      }
+
+      #detail-ui {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 50;
+        opacity: 0;
+        transition: opacity 0.5s;
+      }
+      body.detail-mode #detail-ui {
+        opacity: 1;
+      }
+      #close-detail {
+        position: absolute;
+        top: 30px;
+        right: 40px;
+        background: rgba(0, 0, 0, 0.8);
+        border: 1px solid #fff;
+        color: white;
+        padding: 10px 30px;
+        border-radius: 30px;
+        cursor: pointer;
+        pointer-events: auto;
+        font-weight: bold;
+      }
+      #detail-hint {
+        position: absolute;
+        bottom: 30px;
+        width: 100%;
+        text-align: center;
+        color: #aaa;
+        font-size: 0.8rem;
+        letter-spacing: 2px;
+        text-shadow: 0 2px 4px black;
+      }
+    </style>
+    <!-- Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/renderers/CSS3DRenderer.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/18.6.4/tween.umd.js"></script>
+  </head>
+  <body>
+    <div id="webgl-container"></div>
+    <div id="css3d-container"></div>
+
+    <div id="ui-container">
+      <div class="section active">
+        <div class="text-wrap">
+          <span class="tag">01 / COMMUNITY</span>
+          <h2>XanyFolk</h2>
+          <p>
+            集合知の形成。<br />無数のノードが結合し、新たな知性を生み出します。<br />背景の球体はあなたの意志に反応します。
+          </p>
+          <button class="enter-btn" onclick="enterDetail(0)">
+            ENTER CLUSTER
+          </button>
+        </div>
+      </div>
+      <div class="section">
+        <div class="text-wrap">
+          <span class="tag">02 / BUSINESS</span>
+          <h2>XanyOne</h2>
+          <p>
+            構造化されたビジネスインテリジェンス。<br />秩序あるグリッド管理。
+          </p>
+          <button class="enter-btn" onclick="enterDetail(1)">
+            ENTER CLUSTER
+          </button>
+        </div>
+      </div>
+      <div class="section">
+        <div class="text-wrap">
+          <span class="tag">03 / ACADEMY</span>
+          <h2>XanyUniv</h2>
+          <p>知識の螺旋。<br />進化し続ける学習ログのアーカイブ。</p>
+          <button class="enter-btn" onclick="enterDetail(2)">
+            ENTER CLUSTER
+          </button>
+        </div>
+      </div>
+      <div class="section">
+        <div class="text-wrap">
+          <span class="tag">04 / ECONOMY</span>
+          <h2>XanyGeek</h2>
+          <p>
+            経済圏の循環。<br />トランザクションが織りなす円筒状のネットワーク。
+          </p>
+          <button class="enter-btn" onclick="enterDetail(3)">
+            ENTER CLUSTER
+          </button>
+        </div>
+      </div>
+      <div class="section">
+        <div class="text-wrap">
+          <span class="tag">05 / MEDIA</span>
+          <h2>XanyMedia</h2>
+          <p>情報の拡散。<br />世界中に広がるニュースの波。</p>
+          <button class="enter-btn" onclick="enterDetail(4)">
+            ENTER CLUSTER
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div id="detail-ui">
+      <button id="close-detail" onclick="exitDetail()">CLOSE CLUSTER ×</button>
+      <div id="detail-hint">SCROLL TO MOVE ALONG THE AXIS</div>
+    </div>
+    <div id="expanded-overlay">
+      <div style="position: relative; width: 90%; height: 90%">
+        <button id="close-expanded" onclick="closeExpanded()">CLOSE ×</button>
+        <div id="expanded-content">
+          <iframe id="expanded-iframe" src=""></iframe>
+        </div>
+      </div>
+    </div>
+    <div id="scroll-dummy"></div>
+
+    <script>
+      // --- 設定 ---
+      const WIKI_URLS = [
+        "https://en.wikipedia.org/wiki/History",
+        "https://en.wikipedia.org/wiki/Science",
+        "https://en.wikipedia.org/wiki/Architecture",
+        "https://en.wikipedia.org/wiki/Artificial_intelligence",
+        "https://en.wikipedia.org/wiki/Quantum_mechanics",
+        "https://en.wikipedia.org/wiki/World_War_II",
+        "https://en.wikipedia.org/wiki/Modernism",
+        "https://en.wikipedia.org/wiki/Japan",
+        "https://en.wikipedia.org/wiki/Coffee",
+        "https://en.wikipedia.org/wiki/Bauhaus",
+        "https://en.wikipedia.org/wiki/Sustainable_development",
+        "https://en.wikipedia.org/wiki/Urban_planning",
+        "https://en.wikipedia.org/wiki/Philosophy",
+        "https://en.wikipedia.org/wiki/Information_technology",
+        "https://en.wikipedia.org/wiki/Climate_change",
+        "https://en.wikipedia.org/wiki/Art_Deco",
+        "https://en.wikipedia.org/wiki/Neuroscience",
+        "https://en.wikipedia.org/wiki/International_relations",
+        "https://en.wikipedia.org/wiki/Printing_press",
+        "https://en.wikipedia.org/wiki/Internet",
+      ];
+
+      const CONFIG = {
+        webNodeCount: 20,
+        sphereRadius: 28,
+        particleCount: 30000, // 点の数を増やす (30,000個)
+        mouseRadius: 20,
+        forceStrength: 5,
+        returnSpeed: 0.1,
+
+        // 波打つエフェクトの設定
+        waveSpeed: 2.0, // 波の速さ
+        waveFrequency: 0.2, // 波の細かさ
+        waveAmplitude: 1.5, // 波の高さ
+
+        // 円筒配置の設定
+        cylinderRadius: 600, // 円の半径
+        cylinderSpacing: 500, // Z軸方向の間隔
+      };
+
+      const webglContainer = document.getElementById("webgl-container");
+      const css3dContainer = document.getElementById("css3d-container");
+
+      const renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        alpha: true,
+      });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.domElement.style.position = "absolute";
+      renderer.outputEncoding = THREE.LinearEncoding;
+      webglContainer.appendChild(renderer.domElement);
+
+      const cssRenderer = new THREE.CSS3DRenderer();
+      cssRenderer.setSize(window.innerWidth, window.innerHeight);
+      cssRenderer.domElement.style.position = "absolute";
+      css3dContainer.appendChild(cssRenderer.domElement);
+
+      const scene = new THREE.Scene();
+      const cssScene = new THREE.Scene();
+
+      // フォグ
+      scene.fog = new THREE.FogExp2(0x000000, 0.015);
+
+      const camera = new THREE.PerspectiveCamera(
+        75,
+        window.innerWidth / window.innerHeight,
+        0.1,
+        10000
+      );
+      // 初期位置（外側）
+      const startZ = 60;
+      camera.position.z = startZ;
+
+      // ==========================================
+      // 1. 背景：球体 (パーティクル)
+      // ==========================================
+      const geometry = new THREE.BufferGeometry();
+      const positions = [];
+      const originalPositions = []; // 波打ち計算用に元の位置を保存
+
+      for (let i = 0; i < CONFIG.particleCount; i++) {
+        const phi = Math.acos(-1 + (2 * i) / CONFIG.particleCount);
+        const theta = Math.sqrt(CONFIG.particleCount * Math.PI) * phi;
+        const r = CONFIG.sphereRadius;
+
+        const x = r * Math.cos(theta) * Math.sin(phi);
+        const y = r * Math.sin(theta) * Math.sin(phi);
+        const z = r * Math.cos(phi);
+
+        positions.push(x, y, z);
+        originalPositions.push(x, y, z);
+      }
+
+      geometry.setAttribute(
+        "position",
+        new THREE.Float32BufferAttribute(positions, 3)
+      );
+      geometry.userData = { originalPositions: originalPositions };
+
+      const material = new THREE.PointsMaterial({
+        color: 0xffffff,
+        size: 0.15,
+        transparent: true,
+        opacity: 0.8,
+        sizeAttenuation: true,
+        blending: THREE.AdditiveBlending, // 光るように
+      });
+
+      const sphere = new THREE.Points(geometry, material);
+      scene.add(sphere);
+
+      // ==========================================
+      // 2. スマホノード (CSS3D) & Interaction
+      // ==========================================
+      const cssObjects = [];
+      for (let i = 0; i < CONFIG.webNodeCount; i++) {
+        const url = WIKI_URLS[i % WIKI_URLS.length];
+        const title = url.split("/").pop().replace(/_/g, " ");
+        const wrapper = document.createElement("div");
+        wrapper.className = "phone-node";
+        wrapper.innerHTML = `<div class="header-bar"><span>${title}</span><div class="header-dot"></div></div><div class="iframe-container"><div class="fallback-visual"><div class="fallback-title">${title}</div><div class="fallback-note">Double click to expand</div></div><iframe src="${url}"></iframe></div>`;
+        const object = new THREE.CSS3DObject(wrapper);
+        object.position.set(0, 0, -20000);
+        object.scale.set(0.5, 0.5, 0.5);
+        cssScene.add(object);
+        cssObjects.push(object);
+        wrapper.userData = { object: object, url: url };
+
+        let isDragging = false,
+          startMouse = { x: 0, y: 0 },
+          startPos = { x: 0, y: 0 };
+        const header = wrapper.querySelector(".header-bar");
+        header.addEventListener("mousedown", (e) => {
+          isDragging = true;
+          wrapper.classList.add("dragging");
+          startMouse = { x: e.clientX, y: e.clientY };
+          startPos = { x: object.position.x, y: object.position.y };
+          window.addEventListener("mousemove", onMove);
+          window.addEventListener("mouseup", onUp);
+          e.preventDefault();
+        });
+        function onMove(e) {
+          if (!isDragging) return;
+          object.position.x = startPos.x + (e.clientX - startMouse.x) * 3;
+          object.position.y = startPos.y - (e.clientY - startMouse.y) * 3;
+        }
+        function onUp() {
+          isDragging = false;
+          wrapper.classList.remove("dragging");
+          window.removeEventListener("mousemove", onMove);
+          window.removeEventListener("mouseup", onUp);
+        }
+        wrapper.addEventListener("dblclick", () => {
+          document.getElementById("expanded-iframe").src = url;
+          document.getElementById("expanded-overlay").classList.add("active");
+        });
+      }
+      window.closeExpanded = () => {
+        document.getElementById("expanded-overlay").classList.remove("active");
+        setTimeout(() => {
+          document.getElementById("expanded-iframe").src = "";
+        }, 300);
+      };
+
+      // 配置ロジック: 円筒螺旋状 (Center Axis)
+      function getCylinderPosition(index, count) {
+        const angleStep = Math.PI / 2.5; // 少しずつ回転させる
+        const angle = index * angleStep;
+
+        const radius = CONFIG.cylinderRadius;
+        const x = Math.cos(angle) * radius;
+        const y = Math.sin(angle) * radius;
+        const z = -(index * CONFIG.cylinderSpacing) - 1000; // 奥へ配置
+
+        return { x, y, z, angle };
+      }
+
+      // ==========================================
+      // 3. マウス追従 & カメラ制御
+      // ==========================================
+      const mouse = new THREE.Vector2(0, 0);
+      document.addEventListener("mousemove", (event) => {
+        mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+        mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+      });
+
+      // --- State ---
+      let currentSection = 0,
+        isDetailMode = false;
+      let isAnimatingCamera = false;
+      let cameraTargetZ = 0;
+      const startTime = Date.now();
+
+      window.addEventListener("scroll", () => {
+        if (!isDetailMode) {
+          const idx = Math.floor(
+            (window.scrollY + window.innerHeight * 0.5) / window.innerHeight
+          );
+          if (idx !== currentSection && idx >= 0 && idx < 5) {
+            currentSection = idx;
+            document
+              .querySelectorAll(".section")
+              .forEach((el, i) => el.classList.toggle("active", i === idx));
+          }
+        } else {
+          if (!isAnimatingCamera) {
+            const maxScroll = document.body.scrollHeight - window.innerHeight;
+            const progress = window.scrollY / maxScroll;
+            const maxDepth =
+              CONFIG.webNodeCount * CONFIG.cylinderSpacing + 2000;
+            // 中心軸上を奥へ進む
+            cameraTargetZ = -progress * maxDepth;
+          }
+        }
+      });
+
+      // ★ ENTER: ズームイン (Z=60 -> 0)
+      window.enterDetail = (type) => {
+        isDetailMode = true;
+        isAnimatingCamera = true;
+        document.body.classList.add("detail-mode");
+        window.scrollTo(0, 0);
+        cameraTargetZ = 0;
+
+        // 1. カメラ移動 (60 -> 0)
+        new TWEEN.Tween(camera.position)
+          .to({ x: 0, y: 0, z: 0 }, 2500)
+          .easing(TWEEN.Easing.Cubic.InOut)
+          .onComplete(() => {
+            isAnimatingCamera = false;
+          })
+          .start();
+
+        // カメラの回転もリセット
+        new TWEEN.Tween(camera.rotation)
+          .to({ x: 0, y: 0, z: 0 }, 2500)
+          .easing(TWEEN.Easing.Cubic.InOut)
+          .start();
+
+        // 2. スマホ画面（ノード）の出現
+        cssObjects.forEach((obj, i) => {
+          const t = getCylinderPosition(i, CONFIG.webNodeCount);
+          // 初期位置 (遠く)
+          obj.position.set(
+            (Math.random() - 0.5) * 5000,
+            (Math.random() - 0.5) * 5000,
+            -5000
+          );
+          obj.rotation.set(0, 0, 0);
+
+          // 移動
+          new TWEEN.Tween(obj.position)
+            .to({ x: t.x, y: t.y, z: t.z }, 1500)
+            .easing(TWEEN.Easing.Exponential.Out)
+            .delay(2000 + i * 50) // カメラ到着後、順次出現
+            .start();
+
+          // 向き: 中心軸 (0,0,z) を向くように回転
+          // CSS3DObjectの面はデフォルトでZ+を向くので、中心を向かせるにはY軸回転が必要
+          // 位置 (x, y) から角度を逆算
+          const targetRotY = -t.angle + Math.PI / 2;
+          new TWEEN.Tween(obj.rotation)
+            .to({ y: targetRotY }, 2000)
+            .delay(2000 + i * 50)
+            .start();
+        });
+      };
+
+      // ★ EXIT: ズームアウト (Z=0 -> 60)
+      window.exitDetail = () => {
+        isDetailMode = false;
+        isAnimatingCamera = true;
+        document.body.classList.remove("detail-mode");
+        window.scrollTo(0, 0);
+
+        // 1. カメラ移動 (現在地 -> 60)
+        new TWEEN.Tween(camera.position)
+          .to({ x: 0, y: 0, z: startZ }, 2500)
+          .easing(TWEEN.Easing.Cubic.InOut)
+          .onComplete(() => {
+            isAnimatingCamera = false;
+          })
+          .start();
+
+        // 2. スマホ画面退避
+        cssObjects.forEach((obj) => {
+          new TWEEN.Tween(obj.position).to({ z: -20000 }, 1000).start();
+        });
+
+        currentSection = 0;
+        document
+          .querySelectorAll(".section")
+          .forEach((el, i) => el.classList.toggle("active", i === 0));
+      };
+
+      function animate() {
+        requestAnimationFrame(animate);
+        TWEEN.update();
+
+        const time = Date.now() * 0.001; // 秒単位
+
+        // --- 1. 球体パーティクルの波打ちアニメーション ---
+        // 頂点位置の更新
+        const positionsAttr = sphere.geometry.attributes.position;
+        const originalPos = sphere.geometry.userData.originalPositions;
+
+        for (let i = 0; i < CONFIG.particleCount; i++) {
+          const ox = originalPos[i * 3];
+          const oy = originalPos[i * 3 + 1];
+          const oz = originalPos[i * 3 + 2];
+
+          // 基本の球面座標
+          const vector = new THREE.Vector3(ox, oy, oz);
+          // 中心からの距離（半径）
+          const radius = CONFIG.sphereRadius;
+
+          // 波の計算: Y座標と時間に基づいて半径を伸縮させる
+          // sin( y * 頻度 + 時間 * 速度 ) * 振幅
+          const wave =
+            Math.sin(oy * CONFIG.waveFrequency + time * CONFIG.waveSpeed) *
+            CONFIG.waveAmplitude;
+
+          // 新しい半径 = 基本半径 + 波
+          const newRadius = radius + wave;
+
+          // ベクトルを正規化して新しい半径を適用
+          vector.normalize().multiplyScalar(newRadius);
+
+          positionsAttr.setXYZ(i, vector.x, vector.y, vector.z);
+        }
+        positionsAttr.needsUpdate = true;
+
+        // --- 2. カメラ制御 ---
+        if (!isAnimatingCamera) {
+          if (!isDetailMode) {
+            // --- 外から見るモード ---
+            // マウスに応じた回転
+            const targetX = mouse.y * 0.001;
+            const targetY = mouse.x * 0.001;
+
+            // 球体自体の回転（ゆっくり）+ マウス影響
+            sphere.rotation.y += 0.002;
+            sphere.rotation.x += 0.05 * (targetX - sphere.rotation.x);
+            sphere.rotation.y += 0.05 * (targetY - sphere.rotation.y);
+
+            // カメラは固定位置
+            camera.position.x = 0;
+            camera.position.y = 0;
+            camera.position.z = startZ;
+            camera.lookAt(0, 0, 0);
+          } else {
+            // --- 中に入っているモード ---
+            // スクロールでZ移動 (中心軸上)
+            camera.position.z += (cameraTargetZ - camera.position.z) * 0.05;
+
+            // 常に奥を向く
+            camera.lookAt(0, 0, -50000);
+
+            // 背景の球体もゆっくり回しておく（飽きさせないため）
+            sphere.rotation.z += 0.0005;
+          }
+        } else {
+          // アニメーション中は回転のみ継続
+          sphere.rotation.y += 0.005; // 移動中は少し早く回してスピード感を出す
+        }
+
+        renderer.render(scene, camera);
+        cssRenderer.render(cssScene, camera);
+      }
+
+      window.addEventListener("resize", () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        cssRenderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      animate();
+    </script>
+  </body>
+</html>
