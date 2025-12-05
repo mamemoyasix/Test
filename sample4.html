@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>XANY SINGULARITY - DEEP DIVE</title>
+    <style>
+      /* --- 宇宙・シンギュラリティ テーマ --- */
+      :root {
+        --bg-color: #000000;
+        --text-main: #ffffff;
+        --accent-cyan: #00f3ff;
+        --accent-purple: #bc13fe;
+        --glass-panel: rgba(5, 5, 10, 0.6);
+        --font-family: "Helvetica Neue", Arial, sans-serif;
+      }
+
+      body {
+        margin: 0;
+        background-color: var(--bg-color);
+        font-family: var(--font-family);
+        color: var(--text-main);
+        overflow-x: hidden; /* 横スクロール禁止 */
+      }
+
+      /* 3D Canvas (背景固定) */
+      #canvas-container {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100vh;
+        z-index: 1;
+      }
+
+      /* --- Scroll Logic --- */
+      /* スクロール用コンテナ (高さ600vh = 5セクション分たっぷりと) */
+      #scroll-container {
+        position: relative;
+        z-index: 10;
+        height: 600vh;
+        pointer-events: none; /* スクロール領域自体はクリックを通す */
+      }
+
+      /* 各セクションのテキスト (固定配置・JSで表示切替) */
+      .section {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100vh;
+        display: flex;
+        align-items: center;
+        padding: 0 10%;
+        box-sizing: border-box;
+        opacity: 0;
+        transition: opacity 0.8s ease, transform 0.8s ease;
+        transform: translateY(50px) scale(0.9);
+        pointer-events: none;
+        z-index: 20;
+      }
+
+      .section.active {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+
+      /* 奇数・偶数でレイアウトを左右に振る */
+      .section:nth-child(odd) {
+        justify-content: flex-start;
+      }
+      .section:nth-child(even) {
+        justify-content: flex-end;
+        text-align: right;
+      }
+
+      /* テキストボックスのデザイン */
+      .text-content {
+        background: var(--glass-panel);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(8px);
+        padding: 40px;
+        max-width: 450px;
+        border-radius: 8px;
+        box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+        pointer-events: auto; /* テキスト選択などは可能に */
+        position: relative;
+        overflow: hidden;
+      }
+
+      /* ネオンライン装飾 */
+      .text-content::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 4px;
+        height: 100%;
+        background: var(--accent-cyan);
+        box-shadow: 0 0 10px var(--accent-cyan);
+      }
+      .section:nth-child(even) .text-content::before {
+        left: auto;
+        right: 0;
+        background: var(--accent-purple);
+        box-shadow: 0 0 10px var(--accent-purple);
+      }
+
+      h2 {
+        font-size: 2.5rem;
+        margin: 0 0 10px 0;
+        font-weight: 200;
+        letter-spacing: 2px;
+        text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+      }
+      .tag {
+        color: var(--accent-cyan);
+        font-size: 0.8rem;
+        letter-spacing: 4px;
+        display: block;
+        margin-bottom: 20px;
+        font-weight: bold;
+      }
+      .section:nth-child(even) .tag {
+        color: var(--accent-purple);
+      }
+
+      .desc {
+        font-size: 0.95rem;
+        line-height: 1.8;
+        color: #ccc;
+        margin-bottom: 20px;
+      }
+
+      /* 3Dノードをクリックできるよというヒント */
+      .click-hint {
+        font-size: 0.75rem;
+        color: #fff;
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        padding: 8px 16px;
+        display: inline-block;
+        border-radius: 20px;
+        background: rgba(0, 0, 0, 0.3);
+        transition: 0.3s;
+        cursor: pointer;
+      }
+      .click-hint:hover {
+        background: rgba(255, 255, 255, 0.2);
+        border-color: #fff;
+      }
+
+      /* --- UI Elements --- */
+      #progress-bar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        height: 3px;
+        width: 0%;
+        background: linear-gradient(
+          90deg,
+          var(--accent-cyan),
+          var(--accent-purple)
+        );
+        z-index: 100;
+        box-shadow: 0 0 15px var(--accent-cyan);
+      }
+
+      .scroll-indicator {
+        position: fixed;
+        bottom: 30px;
+        left: 50%;
+        transform: translateX(-50%);
+        color: rgba(255, 255, 255, 0.5);
+        font-size: 0.7rem;
+        letter-spacing: 3px;
+        animation: bounce 2s infinite;
+        z-index: 50;
+        pointer-events: none;
+      }
+      @keyframes bounce {
+        0%,
+        100% {
+          transform: translate(-50%, 0);
+        }
+        50% {
+          transform: translate(-50%, 10px);
+        }
+      }
+
+      /* --- Modal (Detail View) --- */
+      #modal {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.85);
+        backdrop-filter: blur(15px);
+        z-index: 200;
+        display: none;
+        justify-content: center;
+        align-items: center;
+        opacity: 0;
+        transition: opacity 0.3s;
+      }
+      #modal.active {
+        display: flex;
+        opacity: 1;
+      }
+
+      .modal-card {
+        width: 80%;
+        max-width: 600px;
+        background: #080808;
+        border: 1px solid #333;
+        padding: 50px;
+        text-align: center;
+        box-shadow: 0 0 80px rgba(0, 243, 255, 0.15);
+        position: relative;
+        transform: scale(0.9);
+        transition: transform 0.3s;
+      }
+      #modal.active .modal-card {
+        transform: scale(1);
+      }
+
+      /* モーダル上部のグラデーションライン */
+      .modal-card::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 2px;
+        background: linear-gradient(
+          90deg,
+          var(--accent-cyan),
+          var(--accent-purple)
+        );
+      }
+
+      .modal-card h2 {
+        font-size: 3rem;
+        margin-bottom: 20px;
+        color: #fff;
+      }
+      .modal-card p {
+        color: #aaa;
+        line-height: 1.8;
+        margin-bottom: 40px;
+      }
+      .close-btn {
+        background: transparent;
+        border: 1px solid #555;
+        color: #fff;
+        padding: 12px 30px;
+        cursor: pointer;
+        transition: 0.3s;
+        letter-spacing: 2px;
+      }
+      .close-btn:hover {
+        background: #fff;
+        color: #000;
+      }
+
+      /* ホバー時のカーソル変更用クラス */
+      body.clickable {
+        cursor: pointer;
+      }
+    </style>
+
+    <!-- Three.js Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  </head>
+  <body>
+    <div id="progress-bar"></div>
+    <div class="scroll-indicator">SCROLL TO DIVE</div>
+
+    <!-- 3D Canvas -->
+    <div id="canvas-container"></div>
+
+    <!-- Invisible Scroll Trigger -->
+    <div id="scroll-container"></div>
+
+    <!-- Content Sections (Fixed position, fade in/out) -->
+
+    <!-- Section 1 -->
+    <div class="section" id="sec-0">
+      <div class="text-content">
+        <span class="tag">01 / COMMUNITY</span>
+        <h2>XanyFolk</h2>
+        <div class="desc">
+          AIが企画書作成を補助する集合知コミュニティ。<br />
+          過去のアーカイブが星のように繋がり、新たなアイデアを形成します。
+        </div>
+        <div class="click-hint">▶ ノードをクリックして詳細</div>
+      </div>
+    </div>
+
+    <!-- Section 2 -->
+    <div class="section" id="sec-1">
+      <div class="text-content">
+        <span class="tag" style="color: var(--accent-purple)"
+          >02 / BUSINESS</span
+        >
+        <h2>XanyOne</h2>
+        <div class="desc">
+          事業支援とドキュメント管理のハブ。<br />
+          ビジネスの信頼性と効率性を、このノードが一手に引き受けます。
+        </div>
+        <div class="click-hint">▶ ACCESS NODE</div>
+      </div>
+    </div>
+
+    <!-- Section 3 -->
+    <div class="section" id="sec-2">
+      <div class="text-content">
+        <span class="tag">03 / ACADEMY</span>
+        <h2>XanyUniversity</h2>
+        <div class="desc">
+          未来の技術を学ぶためのアカデミック領域。<br />
+          ワークショップやイベントを通じて、知識の宇宙を拡張します。
+        </div>
+        <div class="click-hint">▶ ENTER CAMPUS</div>
+      </div>
+    </div>
+
+    <!-- Section 4 -->
+    <div class="section" id="sec-3">
+      <div class="text-content">
+        <span class="tag" style="color: var(--accent-purple)"
+          >04 / ECONOMY</span
+        >
+        <h2>XanyGeek</h2>
+        <div class="desc">
+          無限の可能性を秘めた実験的経済圏。<br />
+          現在は「白紙」の状態ですが、次世代の価値交換がここから始まります。
+        </div>
+        <div class="click-hint">▶ VIEW LAB</div>
+      </div>
+    </div>
+
+    <!-- Section 5 -->
+    <div class="section" id="sec-4">
+      <div class="text-content">
+        <span class="tag">05 / CORPORATE</span>
+        <h2>XanyMedia</h2>
+        <div class="desc">
+          Xany Groupのビジョンを発信する広報拠点。<br />
+          私たちの活動と理念を世界へ届けます。
+        </div>
+        <div class="click-hint">▶ CORPORATE SITE</div>
+      </div>
+    </div>
+
+    <!-- Detail Modal -->
+    <div id="modal">
+      <div class="modal-card">
+        <h2 id="m-title">Title</h2>
+        <p id="m-desc">Description goes here.</p>
+        <button class="close-btn" onclick="closeModal()">CLOSE DATA</button>
+      </div>
+    </div>
+
+    <script>
+      // --- 1. Three.js Setup ---
+      const container = document.getElementById("canvas-container");
+      const scene = new THREE.Scene();
+      // 宇宙の深淵を表現するためのフォグ（霧）
+      scene.fog = new THREE.FogExp2(0x000000, 0.008);
+
+      const camera = new THREE.PerspectiveCamera(
+        60,
+        window.innerWidth / window.innerHeight,
+        0.1,
+        1000
+      );
+      camera.position.set(0, 0, 50); // スタート位置
+
+      const renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        alpha: false,
+      });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(window.devicePixelRatio);
+      container.appendChild(renderer.domElement);
+
+      // --- 2. Lights ---
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+      scene.add(ambientLight);
+
+      // 輝きを強調するポイントライト
+      const pointLight = new THREE.PointLight(0xffffff, 1, 100);
+      scene.add(pointLight);
+
+      // --- 3. Starfield / Warp Tunnel (Particles) ---
+      const starGeo = new THREE.BufferGeometry();
+      const starCount = 5000;
+      const starPos = [];
+      const starSpeed = []; // 各星の速度差
+
+      for (let i = 0; i < starCount; i++) {
+        // トンネル状あるいは広範囲に散らす
+        const x = (Math.random() - 0.5) * 400;
+        const y = (Math.random() - 0.5) * 400;
+        const z = (Math.random() - 0.5) * 600 - 100; // 奥へ長く配置
+        starPos.push(x, y, z);
+        starSpeed.push(Math.random());
+      }
+
+      starGeo.setAttribute(
+        "position",
+        new THREE.Float32BufferAttribute(starPos, 3)
+      );
+
+      const starMat = new THREE.PointsMaterial({
+        color: 0xffffff,
+        size: 0.5,
+        transparent: true,
+        opacity: 0.8,
+      });
+
+      const starField = new THREE.Points(starGeo, starMat);
+      scene.add(starField);
+
+      // --- 4. Create 5 Main Nodes ---
+      // 各ノードの配置データ（スクロールに合わせてカメラがここを巡る）
+      const nodeData = [
+        {
+          id: "folk",
+          title: "XanyFolk",
+          color: 0xe67e22,
+          desc: "コミュニティ領域。過去の企画アーカイブをAIが解析・補助します。",
+          pos: { x: 10, y: 5, z: -20 },
+        },
+        {
+          id: "one",
+          title: "XanyOne",
+          color: 0x3498db,
+          desc: "ビジネス支援ハブ。ドキュメント管理と事業推進の中核です。",
+          pos: { x: -12, y: -8, z: -80 },
+        },
+        {
+          id: "univ",
+          title: "XanyUniversity",
+          color: 0x2ecc71,
+          desc: "学習と成長の場。ワークショップやイベントが開催されます。",
+          pos: { x: 12, y: 8, z: -140 },
+        },
+        {
+          id: "geek",
+          title: "XanyGeek",
+          color: 0x9b59b6,
+          desc: "経済実験室。現在は白紙ですが、無限の可能性があります。",
+          pos: { x: -10, y: -5, z: -200 },
+        },
+        {
+          id: "media",
+          title: "XanyMedia",
+          color: 0xffffff,
+          desc: "コーポレート広報。Xanyのビジョンを世界へ伝えます。",
+          pos: { x: 0, y: 0, z: -260 },
+        },
+      ];
+
+      const interactables = []; // クリック判定用配列
+
+      nodeData.forEach((data) => {
+        const group = new THREE.Group();
+        group.position.set(data.pos.x, data.pos.y, data.pos.z);
+
+        // Core Sphere (発光体)
+        const sphereGeo = new THREE.SphereGeometry(3, 32, 32);
+        const sphereMat = new THREE.MeshBasicMaterial({ color: data.color });
+        const sphere = new THREE.Mesh(sphereGeo, sphereMat);
+
+        // Glow Effect (大きな透明な球体で光を表現)
+        const glowGeo = new THREE.SphereGeometry(6, 32, 32);
+        const glowMat = new THREE.MeshBasicMaterial({
+          color: data.color,
+          transparent: true,
+          opacity: 0.2,
+          wireframe: true,
+        });
+        const glow = new THREE.Mesh(glowGeo, glowMat);
+
+        // Orbit Rings (回転するリング)
+        const ringGeo = new THREE.TorusGeometry(8, 0.1, 16, 100);
+        const ringMat = new THREE.MeshBasicMaterial({
+          color: data.color,
+          transparent: true,
+          opacity: 0.5,
+        });
+        const ring1 = new THREE.Mesh(ringGeo, ringMat);
+        const ring2 = new THREE.Mesh(ringGeo, ringMat);
+
+        ring1.rotation.x = Math.PI / 2;
+        ring2.rotation.x = Math.PI / 3;
+        ring2.rotation.y = Math.PI / 6;
+
+        group.add(sphere);
+        group.add(glow);
+        group.add(ring1);
+        group.add(ring2);
+
+        // クリック判定のためにデータを持たせる
+        sphere.userData = { type: "node", data: data };
+        glow.userData = { type: "node", data: data }; // グロー部分もクリック可能に
+
+        scene.add(group);
+        interactables.push(sphere, glow);
+
+        // アニメーション用に参照を保持
+        data.meshGroup = group;
+        data.rings = [ring1, ring2];
+      });
+
+      // --- 5. Scroll & Camera Logic (The "Nullutto" Effect) ---
+
+      let currentScroll = 0; // 現在の描画上のスクロール位置 (慣性あり)
+      let targetScroll = 0; // 実際のスクロール位置
+      const maxScrollHeight = document.body.scrollHeight - window.innerHeight;
+      const progressBar = document.getElementById("progress-bar");
+      const sections = document.querySelectorAll(".section");
+
+      window.addEventListener("scroll", () => {
+        targetScroll = window.scrollY;
+      });
+
+      // 線形補間 (Lerp)
+      function lerp(start, end, factor) {
+        return start + (end - start) * factor;
+      }
+
+      // スクロール進捗(0.0~1.0)に応じたカメラ位置を計算
+      function getCameraPosition(progress) {
+        // 定義した5つのノード位置を通過点とする
+        // 進行度に合わせて、ノードの「少し手前」を通るように調整
+
+        // ノード位置配列 (zは手前にオフセット)
+        const points = nodeData.map((n) => ({
+          x: n.pos.x * 0.5,
+          y: n.pos.y * 0.5,
+          z: n.pos.z + 40,
+        }));
+        // スタート地点
+        const startPoint = { x: 0, y: 0, z: 50 };
+
+        // 全ポイントリスト [Start, Node1, Node2, ..., Node5]
+        const pathPoints = [startPoint, ...points];
+
+        // 現在の区間インデックスを計算
+        // progress(0~1) を (ポイント数-1)倍する
+        const totalSegments = pathPoints.length - 1;
+        const scaled = progress * totalSegments;
+        const index = Math.floor(scaled);
+        const t = scaled - index; // 区間内の進行度 (0~1)
+
+        if (index >= totalSegments) return pathPoints[totalSegments];
+
+        const p1 = pathPoints[index];
+        const p2 = pathPoints[index + 1];
+
+        return {
+          x: lerp(p1.x, p2.x, t),
+          y: lerp(p1.y, p2.y, t),
+          z: lerp(p1.z, p2.z, t),
+        };
+      }
+
+      // --- 6. Interaction (Raycaster) ---
+      const raycaster = new THREE.Raycaster();
+      const mouse = new THREE.Vector2();
+
+      // マウス位置取得
+      window.addEventListener("mousemove", (e) => {
+        mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+        mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+      });
+
+      // クリック処理
+      window.addEventListener("click", () => {
+        // スクロール中でない、かつモーダルが開いていない場合のみ
+        if (modal.classList.contains("active")) return;
+
+        raycaster.setFromCamera(mouse, camera);
+        const intersects = raycaster.intersectObjects(interactables);
+
+        if (intersects.length > 0) {
+          const target = intersects[0].object;
+          if (target.userData.type === "node") {
+            openModal(target.userData.data);
+          }
+        }
+      });
+
+      // モーダル制御
+      const modal = document.getElementById("modal");
+      function openModal(data) {
+        document.getElementById("m-title").innerText = data.title;
+        document.getElementById("m-title").style.color =
+          "#" + data.color.toString(16);
+        document.getElementById("m-desc").innerText = data.desc;
+        modal.classList.add("active");
+      }
+      window.closeModal = () => {
+        modal.classList.remove("active");
+      };
+
+      // --- 7. Animation Loop ---
+      function animate() {
+        requestAnimationFrame(animate);
+
+        // 1. 慣性スクロール計算 (0.05でヌルっとさせる)
+        currentScroll = lerp(currentScroll, targetScroll, 0.05);
+
+        // 2. 進捗率計算 (0.0 ~ 1.0)
+        const progress = Math.max(
+          0,
+          Math.min(1, currentScroll / maxScrollHeight)
+        );
+
+        // プログレスバー
+        progressBar.style.width = `${progress * 100}%`;
+
+        // 3. カメラ移動
+        const camPos = getCameraPosition(progress);
+        camera.position.set(camPos.x, camPos.y, camPos.z);
+
+        // カメラは常に少し先を見る (トンネルの奥を見る感じ)
+        camera.lookAt(camPos.x * 0.5, camPos.y * 0.5, camPos.z - 50);
+
+        // 4. HTMLセクションの表示制御
+        // 5つのセクションを均等に割り振る
+        const segmentSize = 1 / 5;
+        sections.forEach((sec, i) => {
+          const start = i * segmentSize;
+          const end = (i + 1) * segmentSize;
+
+          // 現在の進行度がこのセクションの範囲内なら表示
+          // フェードイン・アウトのマージンを考慮
+          if (progress >= start - 0.05 && progress < end - 0.05) {
+            sec.classList.add("active");
+          } else {
+            sec.classList.remove("active");
+          }
+        });
+
+        // 5. オブジェクトのアニメーション
+        // ノードの回転
+        nodeData.forEach((data) => {
+          if (data.meshGroup) {
+            data.meshGroup.rotation.y += 0.01;
+            data.meshGroup.rotation.z += 0.005;
+            data.rings[0].rotation.x += 0.02;
+            data.rings[1].rotation.y -= 0.02;
+          }
+        });
+
+        // 背景の星を動かす (ワープ感)
+        // スクロールしていない時はゆっくり、スクロール中は速く
+        const scrollSpeed = Math.abs(targetScroll - currentScroll);
+        const warpSpeed = 0.2 + scrollSpeed * 0.05; // 速度係数
+
+        const positions = starField.geometry.attributes.position.array;
+        for (let i = 0; i < starCount; i++) {
+          // z座標を動かす
+          let z = positions[i * 3 + 2];
+          z += warpSpeed;
+
+          // カメラの後ろに行ったら奥へ戻す (ループ)
+          if (z > camera.position.z + 100) {
+            z = camera.position.z - 500;
+            // 再配置時にXYも少しランダムに変えると自然
+            positions[i * 3] = (Math.random() - 0.5) * 400;
+            positions[i * 3 + 1] = (Math.random() - 0.5) * 400;
+          }
+          positions[i * 3 + 2] = z;
+        }
+        starField.geometry.attributes.position.needsUpdate = true;
+
+        // 6. カーソル判定 (ホバーエフェクト)
+        raycaster.setFromCamera(mouse, camera);
+        const intersects = raycaster.intersectObjects(interactables);
+        if (intersects.length > 0 && !modal.classList.contains("active")) {
+          document.body.classList.add("clickable");
+          // ホバーしたノードを少し拡大などの演出も可
+        } else {
+          document.body.classList.remove("clickable");
+        }
+
+        renderer.render(scene, camera);
+      }
+
+      // リサイズ対応
+      window.addEventListener("resize", () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      // スタート
+      animate();
+    </script>
+  </body>
+</html>

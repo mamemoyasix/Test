@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>XANY - CONNECTED CLUSTER</title>
+    <style>
+      /* --- 基本設定 --- */
+      :root {
+        --bg-color: #050505;
+        --text-color: #ffffff;
+        --accent-color: #4a90e2;
+      }
+
+      body {
+        margin: 0;
+        background-color: var(--bg-color);
+        font-family: "Helvetica Neue", Arial, sans-serif;
+        color: var(--text-color);
+        overflow: hidden;
+        user-select: none;
+      }
+
+      /* --- Layers --- */
+      #webgl-container {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100vh;
+        z-index: 0;
+        transition: filter 1s ease;
+      }
+      #css3d-container {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100vh;
+        z-index: 10;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 1s ease;
+      }
+
+      body.detail-mode #webgl-container {
+        filter: blur(5px) brightness(0.4);
+      }
+      body.detail-mode #css3d-container {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      /* --- Scroll UI --- */
+      #scroll-dummy {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 500vh;
+        z-index: 30;
+        pointer-events: auto;
+      }
+      body.detail-mode #scroll-dummy {
+        height: 2000vh;
+      }
+
+      /* --- Main UI --- */
+      #ui-container {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100vh;
+        z-index: 20;
+        pointer-events: none;
+      }
+
+      .section {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100vh;
+        display: flex;
+        align-items: center;
+        padding: 0 10%;
+        box-sizing: border-box;
+        transition: opacity 0.5s;
+        opacity: 0;
+      }
+      .section.active {
+        opacity: 1;
+      }
+      body.detail-mode .section {
+        opacity: 0 !important;
+        pointer-events: none;
+      }
+
+      .text-wrap {
+        pointer-events: auto;
+        max-width: 500px;
+        background: rgba(0, 0, 0, 0.6);
+        padding: 40px;
+        border-radius: 8px;
+        backdrop-filter: blur(5px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+      }
+
+      h2 {
+        font-size: 3rem;
+        margin: 0;
+        line-height: 1;
+        letter-spacing: -1px;
+        color: #fff;
+      }
+      .tag {
+        font-size: 0.8rem;
+        letter-spacing: 3px;
+        color: var(--accent-color);
+        display: block;
+        margin-bottom: 20px;
+        font-weight: bold;
+      }
+      p {
+        font-size: 1rem;
+        color: #ccc;
+        line-height: 1.6;
+        margin-bottom: 30px;
+      }
+
+      .enter-btn {
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.5);
+        color: white;
+        padding: 12px 35px;
+        border-radius: 30px;
+        cursor: pointer;
+        transition: 0.3s;
+        font-size: 0.9rem;
+        letter-spacing: 2px;
+        position: relative;
+        z-index: 100;
+      }
+      .enter-btn:hover {
+        background: white;
+        color: black;
+        transform: scale(1.05);
+      }
+
+      .section:nth-child(odd) {
+        justify-content: flex-start;
+      }
+      .section:nth-child(even) {
+        justify-content: flex-end;
+        text-align: right;
+      }
+
+      /* --- Phone Node --- */
+      .phone-node {
+        width: 300px;
+        height: 530px;
+        background: #000;
+        border: 1px solid #444;
+        border-radius: 12px;
+        box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        transition: box-shadow 0.3s, border-color 0.3s;
+      }
+      .phone-node:hover {
+        box-shadow: 0 0 60px rgba(74, 144, 226, 0.6);
+        border-color: var(--accent-color);
+        z-index: 1000;
+      }
+
+      .drag-handle {
+        width: 100%;
+        height: 30px;
+        background: #222;
+        border-bottom: 1px solid #333;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: grab;
+        color: #888;
+        font-size: 0.7rem;
+        letter-spacing: 1px;
+      }
+      .drag-handle:active {
+        cursor: grabbing;
+        background: var(--accent-color);
+        color: white;
+      }
+
+      .iframe-container {
+        flex: 1;
+        position: relative;
+        background: white;
+      }
+      iframe {
+        width: 100%;
+        height: 100%;
+        border: none;
+        pointer-events: auto;
+      }
+      .phone-node.dragging iframe {
+        pointer-events: none;
+      }
+
+      .fallback-text {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #333;
+        font-weight: bold;
+        pointer-events: none;
+        z-index: 0;
+        background: #111;
+        flex-direction: column;
+      }
+
+      /* --- Detail UI --- */
+      #detail-ui {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 50;
+        opacity: 0;
+        transition: opacity 0.5s;
+      }
+      body.detail-mode #detail-ui {
+        opacity: 1;
+      }
+
+      #close-detail {
+        position: absolute;
+        top: 30px;
+        right: 40px;
+        background: rgba(0, 0, 0, 0.8);
+        border: 1px solid #fff;
+        color: white;
+        padding: 10px 25px;
+        border-radius: 30px;
+        cursor: pointer;
+        pointer-events: auto;
+        z-index: 100;
+      }
+      #close-detail:hover {
+        background: white;
+        color: black;
+      }
+
+      #detail-hint {
+        position: absolute;
+        bottom: 30px;
+        width: 100%;
+        text-align: center;
+        color: #aaa;
+        font-size: 0.8rem;
+        letter-spacing: 2px;
+        text-shadow: 0 2px 4px black;
+      }
+    </style>
+    <!-- Three.js Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/renderers/CSS3DRenderer.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/18.6.4/tween.umd.js"></script>
+  </head>
+  <body>
+    <div id="webgl-container"></div>
+    <div id="css3d-container"></div>
+
+    <div id="detail-ui">
+      <button id="close-detail" onclick="exitDetail()">CLOSE CLUSTER ×</button>
+      <div id="detail-hint">SCROLL TO ZOOM / DRAG NODES</div>
+    </div>
+
+    <div id="scroll-dummy"></div>
+
+    <div id="ui-container">
+      <!-- Section 1 -->
+      <div class="section active">
+        <div class="text-wrap">
+          <span class="tag">01 / COMMUNITY</span>
+          <h2>XanyFolk</h2>
+          <p>
+            集合知の形成。<br />アイデアのノードが結合し、新たな価値を創造します。
+          </p>
+          <button class="enter-btn" onclick="enterDetail()">
+            ENTER CLUSTER
+          </button>
+        </div>
+      </div>
+      <!-- Section 2 -->
+      <div class="section">
+        <div class="text-wrap">
+          <span class="tag">02 / BUSINESS</span>
+          <h2>XanyOne</h2>
+          <p>ビジネス構造。<br />整列されたグリッドによる管理システム。</p>
+          <button class="enter-btn" onclick="enterDetail()">
+            ENTER CLUSTER
+          </button>
+        </div>
+      </div>
+      <!-- Section 3 -->
+      <div class="section">
+        <div class="text-wrap">
+          <span class="tag">03 / ACADEMY</span>
+          <h2>XanyUniv</h2>
+          <p>知識の螺旋。<br />DNAのように進化する学習ログの集積。</p>
+          <button class="enter-btn" onclick="enterDetail()">
+            ENTER CLUSTER
+          </button>
+        </div>
+      </div>
+      <!-- Section 4 -->
+      <div class="section">
+        <div class="text-wrap">
+          <span class="tag">04 / ECONOMY</span>
+          <h2>XanyGeek</h2>
+          <p>経済圏。<br />円筒状に広がるトランザクションデータ。</p>
+          <button class="enter-btn" onclick="enterDetail()">
+            ENTER CLUSTER
+          </button>
+        </div>
+      </div>
+      <!-- Section 5 -->
+      <div class="section">
+        <div class="text-wrap">
+          <span class="tag">05 / CORPORATE</span>
+          <h2>XanyMedia</h2>
+          <p>拡散。<br />ランダムに広がる情報ネットワーク。</p>
+          <button class="enter-btn" onclick="enterDetail()">
+            ENTER CLUSTER
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // --- 設定 ---
+      const CONFIG = {
+        webNodeCount: 50, // ノード数
+        targetUrl: "https://xany.media/",
+        colors: [0xe67e22, 0x3498db, 0x2ecc71, 0x9b59b6, 0xffffff],
+      };
+
+      // --- Init Renderers ---
+      const webglContainer = document.getElementById("webgl-container");
+      const css3dContainer = document.getElementById("css3d-container");
+
+      const renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        alpha: true,
+      });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.domElement.style.position = "absolute";
+      webglContainer.appendChild(renderer.domElement);
+
+      const cssRenderer = new THREE.CSS3DRenderer();
+      cssRenderer.setSize(window.innerWidth, window.innerHeight);
+      cssRenderer.domElement.style.position = "absolute";
+      css3dContainer.appendChild(cssRenderer.domElement);
+
+      const scene = new THREE.Scene();
+      const cssScene = new THREE.Scene();
+      scene.fog = new THREE.FogExp2(0x050505, 0.0015);
+
+      const camera = new THREE.PerspectiveCamera(
+        60,
+        window.innerWidth / window.innerHeight,
+        1,
+        10000
+      );
+      camera.position.z = 100;
+
+      // --- 1. 背景パーティクル (WebGL) ---
+      const bgGeo = new THREE.BufferGeometry();
+      const bgCount = 2000;
+      const bgPos = new Float32Array(bgCount * 3);
+      const bgColors = new Float32Array(bgCount * 3);
+      const colorHelper = new THREE.Color();
+
+      for (let i = 0; i < bgCount; i++) {
+        bgPos[i * 3] = (Math.random() - 0.5) * 4000;
+        bgPos[i * 3 + 1] = (Math.random() - 0.5) * 4000;
+        bgPos[i * 3 + 2] = (Math.random() - 0.5) * 4000;
+
+        const cIndex = Math.floor(Math.random() * 5);
+        colorHelper.setHex(CONFIG.colors[cIndex]);
+        bgColors[i * 3] = colorHelper.r;
+        bgColors[i * 3 + 1] = colorHelper.g;
+        bgColors[i * 3 + 2] = colorHelper.b;
+      }
+      bgGeo.setAttribute("position", new THREE.BufferAttribute(bgPos, 3));
+      bgGeo.setAttribute("color", new THREE.BufferAttribute(bgColors, 3));
+
+      const spriteCanvas = document.createElement("canvas");
+      spriteCanvas.width = 32;
+      spriteCanvas.height = 32;
+      const ctx = spriteCanvas.getContext("2d");
+      const grad = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+      grad.addColorStop(0, "white");
+      grad.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 32, 32);
+      const tex = new THREE.CanvasTexture(spriteCanvas);
+
+      const bgMat = new THREE.PointsMaterial({
+        size: 8,
+        map: tex,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.6,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      const bgParticles = new THREE.Points(bgGeo, bgMat);
+      scene.add(bgParticles);
+
+      // --- 2. スマホノード (CSS3D) ---
+      const cssObjects = [];
+
+      for (let i = 0; i < CONFIG.webNodeCount; i++) {
+        const wrapper = document.createElement("div");
+        wrapper.className = "phone-node";
+
+        const handle = document.createElement("div");
+        handle.className = "drag-handle";
+        handle.innerHTML = `NODE :: DRAG`;
+        wrapper.appendChild(handle);
+
+        const content = document.createElement("div");
+        content.className = "iframe-container";
+
+        const fallback = document.createElement("div");
+        fallback.className = "fallback-text";
+        fallback.innerHTML = `<span style="color:#4a90e2; font-size:2rem;">XANY</span><br>NODE #${
+          i + 1
+        }`;
+        content.appendChild(fallback);
+
+        const iframe = document.createElement("iframe");
+        iframe.src = CONFIG.targetUrl;
+        content.appendChild(iframe);
+
+        wrapper.appendChild(content);
+
+        const object = new THREE.CSS3DObject(wrapper);
+        // 初期位置は画面外
+        object.position.set(0, 0, -10000);
+        object.scale.set(0.5, 0.5, 0.5);
+
+        cssScene.add(object);
+        cssObjects.push(object);
+
+        wrapper.userData = { object: object };
+        setupDrag(handle, wrapper);
+      }
+
+      // --- 3. 関係性のライン (WebGL) ---
+      // ノード間をつなぐ線。詳細モードで表示する。
+      const lineGeo = new THREE.BufferGeometry();
+      // 線分の最大数 (接続数 * ノード数)
+      const maxLines = CONFIG.webNodeCount * 3;
+      const linePositions = new Float32Array(maxLines * 6); // 2点 * 3座標
+      lineGeo.setAttribute(
+        "position",
+        new THREE.BufferAttribute(linePositions, 3)
+      );
+
+      const lineMat = new THREE.LineBasicMaterial({
+        color: 0x4a90e2,
+        transparent: true,
+        opacity: 0.0, // 初期は非表示
+      });
+      const connectionLines = new THREE.LineSegments(lineGeo, lineMat);
+      scene.add(connectionLines);
+
+      // --- ドラッグ処理 ---
+      function setupDrag(handle, wrapper) {
+        let isDragging = false;
+        let startMouse = { x: 0, y: 0 };
+        let startPos = { x: 0, y: 0 };
+
+        handle.addEventListener("mousedown", (e) => {
+          isDragging = true;
+          wrapper.classList.add("dragging");
+          startMouse = { x: e.clientX, y: e.clientY };
+          const obj = wrapper.userData.object;
+          startPos = { x: obj.position.x, y: obj.position.y };
+          window.addEventListener("mousemove", onMouseMove);
+          window.addEventListener("mouseup", onMouseUp);
+          e.stopPropagation();
+        });
+
+        function onMouseMove(e) {
+          if (!isDragging) return;
+          const dx = e.clientX - startMouse.x;
+          const dy = e.clientY - startMouse.y;
+          const moveScale = 2.5;
+          const obj = wrapper.userData.object;
+          obj.position.x = startPos.x + dx * moveScale;
+          obj.position.y = startPos.y - dy * moveScale;
+
+          // 線を更新する必要があるが、コストが高いのでドラッグ中は追従させず、
+          // アニメーションループ内で更新する形にする
+        }
+
+        function onMouseUp() {
+          isDragging = false;
+          wrapper.classList.remove("dragging");
+          window.removeEventListener("mousemove", onMouseMove);
+          window.removeEventListener("mouseup", onMouseUp);
+        }
+      }
+
+      // --- 均等配置ロジック (Fibonacci Sphere) ---
+      function updateClusterLayout() {
+        // フィボナッチ球面に配置して重なりを防ぐ
+        // 視認性を高めるため、半径を大きくとる
+        const radius = 2200;
+        const count = CONFIG.webNodeCount;
+
+        // WebGLのライン更新用インデックス
+        let lineIdx = 0;
+        const posAttr = connectionLines.geometry.attributes.position;
+
+        cssObjects.forEach((obj, i) => {
+          // フィボナッチ配置計算
+          const phi = Math.acos(-1 + (2 * i) / count);
+          const theta = Math.sqrt(count * Math.PI) * phi;
+
+          const targetX = radius * Math.cos(theta) * Math.sin(phi);
+          const targetY = radius * Math.sin(theta) * Math.sin(phi);
+          const targetZ = radius * Math.cos(phi);
+
+          // アニメーションで移動
+          new TWEEN.Tween(obj.position)
+            .to({ x: targetX, y: targetY, z: targetZ }, 2000)
+            .easing(TWEEN.Easing.Exponential.Out)
+            .delay(Math.random() * 500)
+            .onUpdate(() => {
+              // 移動中に常に原点(0,0,0)を向く
+              obj.lookAt(0, 0, 0);
+            })
+            .onComplete(() => {
+              obj.lookAt(0, 0, 0);
+            })
+            .start();
+
+          // 近隣のノードと線をつなぐ (簡易的に i+1, i+something とつなぐ)
+          // 正確な近傍探索は重いので、リスト順で接続
+          const neighborIdx1 = (i + 1) % count;
+          const neighborIdx2 = (i + 7) % count; // 適当なオフセットでグリッドっぽく
+
+          // ターゲット位置をベースに線を引く（アニメーション中は追従しない簡易実装）
+          // ※本来はanimateループ内で描画すべきだが、今回は固定構造として見せる
+          const p1 = new THREE.Vector3(targetX, targetY, targetZ);
+          const p2 = getFibonacciPos(neighborIdx1, count, radius);
+          const p3 = getFibonacciPos(neighborIdx2, count, radius);
+
+          // Line 1
+          posAttr.setXYZ(lineIdx++, p1.x, p1.y, p1.z);
+          posAttr.setXYZ(lineIdx++, p2.x, p2.y, p2.z);
+          // Line 2
+          posAttr.setXYZ(lineIdx++, p1.x, p1.y, p1.z);
+          posAttr.setXYZ(lineIdx++, p3.x, p3.y, p3.z);
+        });
+
+        posAttr.needsUpdate = true;
+
+        // 線をフェードイン
+        new TWEEN.Tween(connectionLines.material)
+          .to({ opacity: 0.3 }, 2000)
+          .delay(1000)
+          .start();
+      }
+
+      // 補助関数: インデックスから位置を計算
+      function getFibonacciPos(i, count, radius) {
+        const phi = Math.acos(-1 + (2 * i) / count);
+        const theta = Math.sqrt(count * Math.PI) * phi;
+        return new THREE.Vector3(
+          radius * Math.cos(theta) * Math.sin(phi),
+          radius * Math.sin(theta) * Math.sin(phi),
+          radius * Math.cos(phi)
+        );
+      }
+
+      // --- 状態管理 & スクロール ---
+      let currentSection = 0;
+      let isDetailMode = false;
+      let cameraTargetZ = 100;
+
+      window.addEventListener("scroll", () => {
+        const scrollY = window.scrollY;
+
+        if (!isDetailMode) {
+          const h = window.innerHeight;
+          const idx = Math.floor((scrollY + h * 0.5) / h);
+          if (idx !== currentSection && idx >= 0 && idx < 5) {
+            currentSection = idx;
+            document.querySelectorAll(".section").forEach((el, i) => {
+              el.classList.toggle("active", i === currentSection);
+            });
+          }
+        } else {
+          // 詳細モード：ズームイン/アウト
+          const maxScroll = document.body.scrollHeight - window.innerHeight;
+          const progress = scrollY / maxScroll;
+          // 3500(手前) -> -3500(奥) に範囲拡大
+          cameraTargetZ = 3500 - progress * 7000;
+        }
+      });
+
+      // --- トランジション ---
+      window.enterDetail = () => {
+        isDetailMode = true;
+        document.body.classList.add("detail-mode");
+        window.scrollTo(0, 0);
+
+        // カメラを全体が見える位置へ移動
+        camera.position.z = 3500;
+        cameraTargetZ = 3500;
+
+        // クラスター形成開始
+        updateClusterLayout();
+      };
+
+      window.exitDetail = () => {
+        isDetailMode = false;
+        document.body.classList.remove("detail-mode");
+        window.scrollTo(0, 0);
+
+        // ノード退避
+        cssObjects.forEach((obj) => {
+          new TWEEN.Tween(obj.position).to({ z: -10000 }, 800).start();
+        });
+        // 線を消す
+        new TWEEN.Tween(connectionLines.material)
+          .to({ opacity: 0 }, 500)
+          .start();
+
+        // カメラ戻す
+        new TWEEN.Tween(camera.position).to({ z: 100 }, 1000).start();
+      };
+
+      // --- Animation Loop ---
+      function animate() {
+        requestAnimationFrame(animate);
+        TWEEN.update();
+
+        if (isDetailMode) {
+          // ズーム操作
+          camera.position.z += (cameraTargetZ - camera.position.z) * 0.05;
+          camera.lookAt(0, 0, 0); // 常にクラスターの中心を見る
+        } else {
+          camera.lookAt(0, 0, 0);
+          const t = Date.now() * 0.0002;
+          camera.position.x = Math.sin(t) * 30;
+          bgParticles.rotation.y += 0.0005;
+        }
+
+        renderer.render(scene, camera);
+        cssRenderer.render(cssScene, camera);
+      }
+
+      window.addEventListener("resize", () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        cssRenderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      animate();
+    </script>
+  </body>
+</html>

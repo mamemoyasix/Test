@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>XANY SCROLL UNIVERSE - OZ STYLE</title>
+    <style>
+      /* --- OZ風デザイン + スクロールレイアウト --- */
+      :root {
+        --bg-color: #ffffff;
+        --text-main: #333333;
+        --accent-red: #e73c3c;
+        --font-family: "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif;
+      }
+
+      body {
+        margin: 0;
+        background-color: var(--bg-color);
+        font-family: var(--font-family);
+        color: var(--text-main);
+        overflow-x: hidden; /* 横スクロール禁止 */
+      }
+
+      /* 3D Canvas (背景固定) */
+      #canvas-container {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100vh;
+        z-index: 1;
+      }
+
+      /* --- Scroll Sections --- */
+      /* スクロールするための余白コンテナ */
+      #scroll-container {
+        position: relative;
+        z-index: 10;
+        height: 500vh; /* 5つのセクション × 100vh */
+      }
+
+      /* 各セクションのコンテンツ (画面中央に固定表示されるが、JSで透明度制御) */
+      .section {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: flex-start; /* 左寄せ */
+        padding-left: 10%;
+        box-sizing: border-box;
+        opacity: 0; /* JSで表示 */
+        pointer-events: none; /* スクロールを阻害しない */
+        transition: opacity 0.5s, transform 0.5s;
+        transform: translateY(20px);
+      }
+
+      .section.active {
+        opacity: 1;
+        transform: translateY(0);
+        pointer-events: auto;
+      }
+
+      /* コンテンツカード */
+      .content-box {
+        background: rgba(255, 255, 255, 0.9);
+        border: 4px solid #333;
+        border-radius: 20px;
+        padding: 40px;
+        max-width: 500px;
+        box-shadow: 10px 10px 0 rgba(231, 60, 60, 0.2);
+        position: relative;
+      }
+
+      /* 装飾ライン */
+      .content-box::before {
+        content: "";
+        position: absolute;
+        top: -10px;
+        left: 20px;
+        width: 40px;
+        height: 10px;
+        background: var(--accent-red);
+      }
+
+      .tag {
+        display: inline-block;
+        background: #333;
+        color: white;
+        padding: 5px 15px;
+        border-radius: 20px;
+        font-weight: bold;
+        font-size: 0.8rem;
+        margin-bottom: 15px;
+        letter-spacing: 2px;
+      }
+
+      h2 {
+        font-size: 3rem;
+        margin: 0 0 20px 0;
+        line-height: 1;
+        color: var(--accent-red);
+        font-family: "Arial Black", sans-serif;
+      }
+      p {
+        font-size: 1rem;
+        line-height: 1.8;
+        color: #555;
+        font-weight: bold;
+      }
+
+      /* 詳細ボタン */
+      .btn {
+        margin-top: 20px;
+        padding: 12px 30px;
+        background: var(--accent-red);
+        color: white;
+        border: none;
+        border-radius: 30px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: 0.3s;
+        pointer-events: auto;
+      }
+      .btn:hover {
+        transform: scale(1.1);
+        box-shadow: 0 5px 15px rgba(231, 60, 60, 0.4);
+      }
+
+      /* --- UI Overlay (Navigation) --- */
+      #ui-layer {
+        position: fixed;
+        top: 30px;
+        left: 30px;
+        z-index: 100;
+      }
+      h1 {
+        font-size: 1.5rem;
+        margin: 0;
+        color: #333;
+        font-weight: 900;
+      }
+
+      /* Scroll Progress Bar */
+      #progress-bar {
+        position: fixed;
+        right: 30px;
+        top: 50%;
+        transform: translateY(-50%);
+        height: 200px;
+        width: 4px;
+        background: #eee;
+        z-index: 100;
+        border-radius: 2px;
+      }
+      #progress-indicator {
+        width: 100%;
+        height: 0%;
+        background: var(--accent-red);
+        border-radius: 2px;
+      }
+
+      /* --- Loading Screen --- */
+      #loader {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: white;
+        z-index: 9999;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        flex-direction: column;
+        transition: opacity 1s;
+      }
+      #loader h2 {
+        color: var(--accent-red);
+      }
+    </style>
+
+    <!-- Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/18.6.4/tween.umd.js"></script>
+  </head>
+  <body>
+    <!-- Loading -->
+    <div id="loader">
+      <h2>LOADING XANY SYSTEM...</h2>
+      <p>SCROLL TO EXPLORE</p>
+    </div>
+
+    <!-- 3D Background -->
+    <div id="canvas-container"></div>
+
+    <!-- UI -->
+    <div id="ui-layer">
+      <h1>XANY UNIVERSE</h1>
+    </div>
+    <div id="progress-bar"><div id="progress-indicator"></div></div>
+
+    <!-- Scroll Content (Height: 500vh) -->
+    <div id="scroll-container"></div>
+
+    <!-- Fixed Sections (Displayed based on scroll) -->
+    <div class="section" id="sec-0">
+      <div class="content-box">
+        <span class="tag">COMMUNITY</span>
+        <h2>XanyFolk</h2>
+        <p>
+          AIが企画書作成を補助するコミュニティ領域。<br />過去の膨大な企画ノードがアーカイブされ、あなたのアイデアと融合します。
+        </p>
+        <button class="btn">ENTER FOLK</button>
+      </div>
+    </div>
+
+    <div class="section" id="sec-1">
+      <div class="content-box" style="margin-left: auto; margin-right: 10%">
+        <!-- 右寄せ配置 -->
+        <span class="tag" style="background: #3498db">BUSINESS</span>
+        <h2 style="color: #3498db">XanyOne</h2>
+        <p>
+          事業支援・資料管理プラットフォーム。<br />ビジネスの中枢機能を提供し、信頼性の高いドキュメント管理を実現します。
+        </p>
+        <button class="btn" style="background: #3498db">ACCESS ONE</button>
+      </div>
+    </div>
+
+    <div class="section" id="sec-2">
+      <div class="content-box">
+        <span class="tag" style="background: #2ecc71">ACADEMY</span>
+        <h2 style="color: #2ecc71">XanyUniversity</h2>
+        <p>
+          学習コンテンツ、ワークショップ、イベント企画。<br />未来の技術を学ぶためのアカデミックなノードです。
+        </p>
+        <button class="btn" style="background: #2ecc71">START LEARNING</button>
+      </div>
+    </div>
+
+    <div class="section" id="sec-3">
+      <div class="content-box" style="margin-left: auto; margin-right: 10%">
+        <span class="tag" style="background: #9b59b6">ECONOMY</span>
+        <h2 style="color: #9b59b6">XanyGeek</h2>
+        <p>
+          経済圏を構築する実験的領域。<br />現在は無限の可能性を秘めた「白紙」の空間として定義されています。
+        </p>
+        <button class="btn" style="background: #9b59b6">VIEW LAB</button>
+      </div>
+    </div>
+
+    <div class="section" id="sec-4">
+      <div
+        class="content-box"
+        style="text-align: center; max-width: 600px; margin: 0 auto"
+      >
+        <!-- 中央配置 -->
+        <span class="tag" style="background: #333">CORPORATE</span>
+        <h2 style="color: #333">XanyMedia</h2>
+        <p>
+          広報・コーポレートサイト機能。<br />Xany
+          Groupのビジョンと活動を世界へ発信する情報ハブ。
+        </p>
+        <button class="btn" style="background: #333">VISIT SITE</button>
+      </div>
+    </div>
+
+    <script>
+      // --- 1. Three.js Setup ---
+      const container = document.getElementById("canvas-container");
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0xffffff);
+      scene.fog = new THREE.Fog(0xffffff, 20, 150); // 奥行きの霧
+
+      const camera = new THREE.PerspectiveCamera(
+        50,
+        window.innerWidth / window.innerHeight,
+        0.1,
+        1000
+      );
+      // 初期位置
+      camera.position.set(0, 0, 50);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(window.devicePixelRatio);
+      container.appendChild(renderer.domElement);
+
+      // ライト
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+      scene.add(ambientLight);
+      const dirLight = new THREE.DirectionalLight(0xffffff, 0.5);
+      dirLight.position.set(10, 20, 10);
+      scene.add(dirLight);
+
+      // --- 2. OZ World Objects ---
+
+      // アバターパーティクル (背景)
+      // 奥行き(Z)を長く設定して、スクロールに合わせて進んでいる感を出す
+      const avatarsGeo = new THREE.BufferGeometry();
+      const avatarCount = 3000;
+      const posArray = [];
+      const colArray = [];
+      const colors = [
+        new THREE.Color("#e73c3c"),
+        new THREE.Color("#3498db"),
+        new THREE.Color("#f1c40f"),
+        new THREE.Color("#2ecc71"),
+      ];
+
+      for (let i = 0; i < avatarCount; i++) {
+        // X, Y は広範囲に、Zは奥深く(-400 ~ 100)
+        posArray.push(
+          (Math.random() - 0.5) * 300,
+          (Math.random() - 0.5) * 200,
+          (Math.random() - 0.5) * 500 - 100
+        );
+        const c = colors[Math.floor(Math.random() * colors.length)];
+        colArray.push(c.r, c.g, c.b);
+      }
+
+      avatarsGeo.setAttribute(
+        "position",
+        new THREE.Float32BufferAttribute(posArray, 3)
+      );
+      avatarsGeo.setAttribute(
+        "color",
+        new THREE.Float32BufferAttribute(colArray, 3)
+      );
+
+      // 丸いテクスチャ生成
+      const canvas = document.createElement("canvas");
+      canvas.width = 32;
+      canvas.height = 32;
+      const ctx = canvas.getContext("2d");
+      ctx.beginPath();
+      ctx.arc(16, 16, 14, 0, Math.PI * 2);
+      ctx.fillStyle = "white";
+      ctx.fill();
+      const circleTex = new THREE.CanvasTexture(canvas);
+
+      const avatarMat = new THREE.PointsMaterial({
+        size: 3,
+        vertexColors: true,
+        map: circleTex,
+        transparent: true,
+        opacity: 0.8,
+        alphaTest: 0.5,
+      });
+      const starField = new THREE.Points(avatarsGeo, avatarMat);
+      scene.add(starField);
+
+      // --- 3. Main Nodes Setup (Path Waypoints) ---
+      // カメラが通過するポイントにノードを配置
+      // スクロール0% -> Folk, 25% -> One, 50% -> Univ...
+
+      const nodeData = [
+        { id: "folk", color: 0xe67e22, pos: { x: 10, y: 5, z: 0 } }, // 手前・右
+        { id: "one", color: 0x3498db, pos: { x: -15, y: -5, z: -50 } }, // 奥・左
+        { id: "univ", color: 0x2ecc71, pos: { x: 15, y: 10, z: -100 } }, // さらに奥・右
+        { id: "geek", color: 0x9b59b6, pos: { x: -10, y: -10, z: -150 } }, // さらに奥・左
+        { id: "media", color: 0x333333, pos: { x: 0, y: 0, z: -200 } }, // 最奥・中央
+      ];
+
+      const nodeObjects = [];
+
+      nodeData.forEach((data) => {
+        const group = new THREE.Group();
+        group.position.set(data.pos.x, data.pos.y, data.pos.z);
+
+        // Sphere
+        const sphere = new THREE.Mesh(
+          new THREE.SphereGeometry(4, 32, 32),
+          new THREE.MeshBasicMaterial({ color: data.color })
+        );
+        group.add(sphere);
+
+        // Rings
+        const ringGeo = new THREE.TorusGeometry(6, 0.2, 16, 64);
+        const ringMat = new THREE.MeshBasicMaterial({
+          color: data.color,
+          transparent: true,
+          opacity: 0.6,
+        });
+        const ring1 = new THREE.Mesh(ringGeo, ringMat);
+        const ring2 = new THREE.Mesh(ringGeo, ringMat);
+
+        ring1.rotation.x = Math.PI / 2;
+        ring2.rotation.x = Math.PI / 2.5;
+        ring2.rotation.y = Math.PI / 5;
+
+        group.add(ring1);
+        group.add(ring2);
+
+        // Floating bits (Data blocks)
+        for (let i = 0; i < 5; i++) {
+          const box = new THREE.Mesh(
+            new THREE.BoxGeometry(1, 1, 1),
+            new THREE.MeshBasicMaterial({ color: data.color, wireframe: true })
+          );
+          box.position.set(
+            (Math.random() - 0.5) * 15,
+            (Math.random() - 0.5) * 15,
+            (Math.random() - 0.5) * 15
+          );
+          group.add(box);
+        }
+
+        scene.add(group);
+        nodeObjects.push({ group, ring1, ring2 });
+      });
+
+      // --- 4. Scroll & Camera Logic (The "Nullutto" Effect) ---
+
+      let scrollY = 0; // 現在のスクロール位置
+      let targetScroll = 0; // 目標位置
+      const sections = document.querySelectorAll(".section");
+      const progressBar = document.getElementById("progress-indicator");
+      const maxScroll = document.body.scrollHeight - window.innerHeight;
+
+      // スクロールイベント
+      window.addEventListener("scroll", () => {
+        targetScroll = window.scrollY;
+      });
+
+      // 線形補間 (Lerp) 関数
+      function lerp(start, end, factor) {
+        return start + (end - start) * factor;
+      }
+
+      // カメラパスの座標計算
+      function getCameraPosition(progress) {
+        // progress: 0(Start) ~ 1(End)
+        // 5つのセクションがあるので、0, 0.25, 0.5, 0.75, 1.0 が各ノードのフォーカスポイント
+
+        // ノードの座標をベースに、少し手前(offset)にカメラを置く
+        const p1 = { x: 10, y: 5, z: 30 }; // Folkを見る位置
+        const p2 = { x: -15, y: -5, z: -20 }; // Oneを見る位置
+        const p3 = { x: 15, y: 10, z: -70 }; // Univを見る位置
+        const p4 = { x: -10, y: -10, z: -120 }; // Geekを見る位置
+        const p5 = { x: 0, y: 0, z: -170 }; // Mediaを見る位置
+
+        const points = [p1, p2, p3, p4, p5];
+
+        // 現在の区間を特定 (例: 0.3なら p2とp3の間)
+        // progress * 4 (区間数)
+        const scaled = progress * 4;
+        const index = Math.floor(scaled);
+        const t = scaled - index; // 区間内の進行度 (0~1)
+
+        if (index >= 4) return p5; // 最後
+
+        const start = points[index];
+        const end = points[index + 1];
+
+        return {
+          x: lerp(start.x, end.x, t),
+          y: lerp(start.y, end.y, t),
+          z: lerp(start.z, end.z, t),
+        };
+      }
+
+      function getLookAtPosition(progress) {
+        // カメラが見る先（各ノードの中心）
+        const p1 = nodeData[0].pos;
+        const p2 = nodeData[1].pos;
+        const p3 = nodeData[2].pos;
+        const p4 = nodeData[3].pos;
+        const p5 = nodeData[4].pos;
+
+        const points = [p1, p2, p3, p4, p5];
+        const scaled = progress * 4;
+        const index = Math.floor(scaled);
+        const t = scaled - index;
+
+        if (index >= 4) return p5;
+        const start = points[index];
+        const end = points[index + 1];
+
+        return {
+          x: lerp(start.x, end.x, t),
+          y: lerp(start.y, end.y, t),
+          z: lerp(start.z, end.z, t),
+        };
+      }
+
+      // Animation Loop
+      function animate() {
+        requestAnimationFrame(animate);
+
+        // 慣性スクロール処理 (現在値を目標値に近づける)
+        scrollY = lerp(scrollY, targetScroll, 0.05); // 0.05が「ぬるっと感」の係数
+
+        // 全体の進捗 (0.0 ~ 1.0)
+        const totalHeight = document.body.scrollHeight - window.innerHeight;
+        const progress = Math.min(Math.max(scrollY / totalHeight, 0), 1);
+
+        // プログレスバー更新
+        progressBar.style.height = `${progress * 100}%`;
+
+        // カメラ移動
+        const camPos = getCameraPosition(progress);
+        camera.position.set(camPos.x, camPos.y, camPos.z);
+
+        // カメラの視線移動
+        const lookAtPos = getLookAtPosition(progress);
+        camera.lookAt(lookAtPos.x, lookAtPos.y, lookAtPos.z);
+
+        // カメラを少し揺らす（浮遊感）
+        const time = Date.now() * 0.001;
+        camera.position.y += Math.sin(time) * 0.1;
+
+        // HTMLセクションの表示切り替え
+        // 各セクションの有効範囲: 0.0-0.2, 0.2-0.4, ...
+        sections.forEach((sec, index) => {
+          const sectionStart = index * 0.2; // 5セクションなので0.2刻み
+          const sectionEnd = (index + 1) * 0.2;
+
+          // 現在のprogressがこのセクションの範囲内、かつ中心に近い場合に表示
+          // フェードイン・アウトのしきい値を調整
+          if (progress >= sectionStart - 0.1 && progress < sectionEnd - 0.05) {
+            sec.classList.add("active");
+          } else {
+            sec.classList.remove("active");
+          }
+        });
+
+        // オブジェクトのアニメーション (回転など)
+        nodeObjects.forEach((obj) => {
+          obj.group.rotation.y += 0.005;
+          obj.ring1.rotation.z += 0.01;
+          obj.ring2.rotation.x -= 0.01;
+        });
+
+        // 背景アバターの移動（手前に迫ってくる）
+        starField.rotation.z += 0.001;
+        // starField.position.z += 0.1; // 無限スクロールにするなら位置リセットが必要
+
+        renderer.render(scene, camera);
+      }
+
+      // 初期化アニメーション
+      window.onload = () => {
+        const loader = document.getElementById("loader");
+        setTimeout(() => {
+          loader.style.opacity = "0";
+          setTimeout(() => (loader.style.display = "none"), 1000);
+        }, 1000);
+        animate();
+      };
+
+      // リサイズ対応
+      window.addEventListener("resize", () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+    </script>
+  </body>
+</html>

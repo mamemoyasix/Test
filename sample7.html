@@ -1,0 +1,1005 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>XANY - AI FACE INTERFACE</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Oswald:wght@200;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      /* --- 基本設定 --- */
+      :root {
+        --bg-color: #000000;
+        --text-color: #ffffff;
+        --accent-color: #00f3ff;
+        --accent-secondary: #4a90e2;
+        --font-main: "Inter", sans-serif;
+        --font-display: "Oswald", sans-serif;
+      }
+
+      body {
+        margin: 0;
+        background-color: var(--bg-color);
+        font-family: var(--font-main);
+        color: var(--text-color);
+        height: 500vh;
+        overflow-x: hidden;
+        overflow-y: scroll;
+        user-select: none;
+      }
+
+      /* --- Layers --- */
+      #webgl-container {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100vh;
+        z-index: 0;
+        pointer-events: none;
+      }
+      #css3d-container {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100vh;
+        z-index: 5;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 2s ease; /* フェードイン時間を長く */
+      }
+      #ui-container {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100vh;
+        z-index: 10;
+        pointer-events: none;
+        transition: opacity 0.5s;
+      }
+
+      /* 詳細モード時 */
+      body.detail-mode {
+        height: 2000vh;
+      }
+      body.detail-mode #css3d-container {
+        opacity: 1;
+        pointer-events: auto;
+      }
+      body.detail-mode #ui-container {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      /* --- フラッシュオーバーレイ (トランジション用) --- */
+      #flash-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: white;
+        z-index: 9999;
+        pointer-events: none;
+        opacity: 0;
+      }
+
+      /* --- セクション表示 (ilabsolutions風) --- */
+      .section {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding: 0 5vw;
+        box-sizing: border-box;
+        transition: opacity 0.6s ease, transform 0.6s ease;
+        opacity: 0;
+        transform: translateY(30px);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      }
+      .section.active {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
+      .content-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        align-items: center;
+        width: 100%;
+        max-width: 1400px;
+        margin: 0 auto;
+        position: relative;
+        pointer-events: auto;
+      }
+
+      .bg-number {
+        font-family: var(--font-display);
+        font-size: 25vw;
+        line-height: 0.8;
+        color: rgba(255, 255, 255, 0.03);
+        position: absolute;
+        top: 50%;
+        left: 0;
+        transform: translateY(-50%);
+        z-index: -1;
+      }
+
+      .text-area {
+        padding: 40px;
+        border-left: 1px solid rgba(255, 255, 255, 0.2);
+        padding-left: 60px;
+        background: rgba(0, 0, 0, 0.4);
+        backdrop-filter: blur(5px);
+      }
+
+      .section:nth-child(even) .content-grid {
+        direction: rtl;
+      }
+      .section:nth-child(even) .text-area {
+        direction: ltr;
+        border-left: none;
+        border-right: 1px solid rgba(255, 255, 255, 0.2);
+        padding-left: 0;
+        padding-right: 60px;
+        text-align: right;
+      }
+      .section:nth-child(even) .bg-number {
+        left: auto;
+        right: 0;
+      }
+
+      .category-label {
+        font-size: 0.9rem;
+        letter-spacing: 4px;
+        text-transform: uppercase;
+        color: var(--accent-color);
+        margin-bottom: 20px;
+        display: block;
+        font-weight: 600;
+      }
+      h2 {
+        font-family: var(--font-display);
+        font-size: 5rem;
+        font-weight: 500;
+        margin: 0 0 30px 0;
+        line-height: 0.9;
+        text-transform: uppercase;
+        color: #fff;
+      }
+      p {
+        font-size: 1.1rem;
+        color: #aaa;
+        line-height: 1.8;
+        margin-bottom: 50px;
+        max-width: 500px;
+        font-weight: 300;
+      }
+      .section:nth-child(even) p {
+        margin-left: auto;
+      }
+
+      .enter-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 15px;
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: white;
+        font-family: var(--font-main);
+        font-size: 1.2rem;
+        letter-spacing: 1px;
+        padding: 0;
+        transition: color 0.3s;
+      }
+      .enter-link:hover {
+        color: var(--accent-color);
+      }
+      .arrow-circle {
+        width: 50px;
+        height: 50px;
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.3s;
+      }
+      .enter-link:hover .arrow-circle {
+        background: var(--accent-color);
+        border-color: var(--accent-color);
+        color: #000;
+        transform: rotate(-45deg);
+      }
+
+      /* --- スマホノード --- */
+      .phone-node {
+        width: 320px;
+        height: 550px;
+        background: #000;
+        border: 1px solid #333;
+        box-shadow: 0 0 20px rgba(0, 0, 0, 0.8);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        transition: border-color 0.3s, box-shadow 0.3s;
+        cursor: grab;
+      }
+      .phone-node:hover {
+        box-shadow: 0 0 40px rgba(0, 243, 255, 0.4);
+        border-color: #fff;
+        z-index: 100;
+      }
+      .phone-node.dragging {
+        cursor: grabbing;
+        border-color: var(--accent-color);
+      }
+
+      .header-bar {
+        width: 100%;
+        height: 30px;
+        background: #1a1a1a;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 10px;
+        box-sizing: border-box;
+        font-size: 0.7rem;
+        color: #888;
+        border-bottom: 1px solid #333;
+      }
+      .iframe-container {
+        flex: 1;
+        position: relative;
+        background: #fff;
+      }
+      iframe {
+        width: 100%;
+        height: 100%;
+        border: none;
+        position: relative;
+        z-index: 2;
+        pointer-events: auto;
+      }
+      .phone-node.dragging iframe {
+        pointer-events: none;
+      }
+
+      .fallback-visual {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        background: #111;
+        z-index: 1;
+        color: #555;
+        padding: 20px;
+      }
+      .fallback-title {
+        font-size: 1.2rem;
+        font-weight: bold;
+        margin-bottom: 10px;
+        color: var(--accent-color);
+      }
+
+      /* --- 詳細UI --- */
+      #detail-ui {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 50;
+        opacity: 0;
+        transition: opacity 0.5s;
+      }
+      body.detail-mode #detail-ui {
+        opacity: 1;
+      }
+      #close-detail {
+        position: absolute;
+        top: 30px;
+        right: 40px;
+        background: rgba(0, 0, 0, 0.8);
+        border: 1px solid #fff;
+        color: white;
+        padding: 10px 30px;
+        border-radius: 30px;
+        cursor: pointer;
+        pointer-events: auto;
+        font-weight: bold;
+      }
+      #close-detail:hover {
+        background: white;
+        color: black;
+      }
+      #detail-hint {
+        position: absolute;
+        bottom: 30px;
+        width: 100%;
+        text-align: center;
+        color: #aaa;
+        font-size: 0.8rem;
+        letter-spacing: 2px;
+        text-shadow: 0 2px 4px black;
+      }
+
+      /* --- 拡大表示 --- */
+      #expanded-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.9);
+        z-index: 9999;
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        backdrop-filter: blur(10px);
+        opacity: 0;
+        transition: opacity 0.3s;
+      }
+      #expanded-overlay.active {
+        display: flex;
+        opacity: 1;
+      }
+      #expanded-content {
+        width: 90%;
+        height: 90%;
+        background: white;
+        border-radius: 8px;
+        position: relative;
+        overflow: hidden;
+      }
+      #expanded-iframe {
+        width: 100%;
+        height: 100%;
+        border: none;
+      }
+      #close-expanded {
+        position: absolute;
+        top: -40px;
+        right: 0;
+        color: white;
+        background: none;
+        border: none;
+        font-size: 1rem;
+        cursor: pointer;
+        pointer-events: auto;
+      }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/renderers/CSS3DRenderer.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/18.6.4/tween.umd.js"></script>
+  </head>
+  <body>
+    <div id="webgl-container"></div>
+    <div id="css3d-container"></div>
+    <div id="flash-overlay"></div>
+
+    <div id="ui-container">
+      <!-- Section 1 -->
+      <div class="section active">
+        <div class="bg-number">01</div>
+        <div class="content-grid">
+          <div></div>
+          <div class="text-area">
+            <span class="category-label">Community</span>
+            <h2>XanyFolk</h2>
+            <p>
+              集合知の形成。あなたのアイデアとAIが融合し、新たな価値を創造します。
+            </p>
+            <button class="enter-link" onclick="enterDetail(0)">
+              Explore
+              <div class="arrow-circle">→</div>
+            </button>
+          </div>
+        </div>
+      </div>
+      <!-- Section 2 -->
+      <div class="section">
+        <div class="bg-number">02</div>
+        <div class="content-grid">
+          <div class="text-area">
+            <span class="category-label">Business</span>
+            <h2>XanyOne</h2>
+            <p>
+              ビジネスの中枢。構造化されたデータグリッドが意思決定を加速させます。
+            </p>
+            <button class="enter-link" onclick="enterDetail(1)">
+              Analyze
+              <div class="arrow-circle">→</div>
+            </button>
+          </div>
+          <div></div>
+        </div>
+      </div>
+      <!-- Section 3 -->
+      <div class="section">
+        <div class="bg-number">03</div>
+        <div class="content-grid">
+          <div></div>
+          <div class="text-area">
+            <span class="category-label">Academy</span>
+            <h2>XanyUniv</h2>
+            <p>
+              知識の螺旋。進化し続ける学習ログとアーカイブへアクセスします。
+            </p>
+            <button class="enter-link" onclick="enterDetail(2)">
+              Learn
+              <div class="arrow-circle">→</div>
+            </button>
+          </div>
+        </div>
+      </div>
+      <!-- Section 4 -->
+      <div class="section">
+        <div class="bg-number">04</div>
+        <div class="content-grid">
+          <div class="text-area">
+            <span class="category-label">Economy</span>
+            <h2>XanyGeek</h2>
+            <p>実験経済圏。トランザクションが織りなす次世代のネットワーク。</p>
+            <button class="enter-link" onclick="enterDetail(3)">
+              Invest
+              <div class="arrow-circle">→</div>
+            </button>
+          </div>
+          <div></div>
+        </div>
+      </div>
+      <!-- Section 5 -->
+      <div class="section">
+        <div class="bg-number">05</div>
+        <div class="content-grid">
+          <div></div>
+          <div class="text-area">
+            <span class="category-label">Media</span>
+            <h2>XanyMedia</h2>
+            <p>情報の拡散。世界中に広がるニュースの波を体感してください。</p>
+            <button class="enter-link" onclick="enterDetail(4)">
+              Read
+              <div class="arrow-circle">→</div>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="detail-ui">
+      <button id="close-detail" onclick="exitDetail()">CLOSE CLUSTER</button>
+      <div id="detail-hint">
+        SCROLL TO ZOOM / DRAG NODES / DOUBLE CLICK TO EXPAND
+      </div>
+    </div>
+
+    <div id="expanded-overlay">
+      <div style="position: relative; width: 90%; height: 90%">
+        <button id="close-expanded" onclick="closeExpanded()">CLOSE</button>
+        <div id="expanded-content">
+          <iframe id="expanded-iframe" src=""></iframe>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // --- 設定 ---
+      const WIKI_URLS = [
+        "https://en.wikipedia.org/wiki/History",
+        "https://en.wikipedia.org/wiki/Science",
+        "https://en.wikipedia.org/wiki/Architecture",
+        "https://en.wikipedia.org/wiki/Artificial_intelligence",
+        "https://en.wikipedia.org/wiki/Quantum_mechanics",
+        "https://en.wikipedia.org/wiki/World_War_II",
+        "https://en.wikipedia.org/wiki/Modernism",
+        "https://en.wikipedia.org/wiki/Japan",
+        "https://en.wikipedia.org/wiki/Coffee",
+        "https://en.wikipedia.org/wiki/Bauhaus",
+        "https://en.wikipedia.org/wiki/Sustainable_development",
+        "https://en.wikipedia.org/wiki/Urban_planning",
+        "https://en.wikipedia.org/wiki/Philosophy",
+        "https://en.wikipedia.org/wiki/Information_technology",
+        "https://en.wikipedia.org/wiki/Climate_change",
+        "https://en.wikipedia.org/wiki/Art_Deco",
+        "https://en.wikipedia.org/wiki/Neuroscience",
+        "https://en.wikipedia.org/wiki/International_relations",
+        "https://en.wikipedia.org/wiki/Printing_press",
+        "https://en.wikipedia.org/wiki/Internet",
+      ];
+
+      // AI関係性ワード
+      const AI_RELATIONS = [
+        "Context",
+        "Origin",
+        "Impact",
+        "Evolution",
+        "Core",
+        "Link",
+        "Sync",
+        "Root",
+        "Data",
+        "Node",
+      ];
+
+      const CONFIG = {
+        webNodeCount: 20,
+        colors: [0x00f3ff, 0x4a90e2, 0x2ecc71, 0x9b59b6, 0xffffff],
+      };
+
+      // --- Three.js Setup ---
+      const webglContainer = document.getElementById("webgl-container");
+      const css3dContainer = document.getElementById("css3d-container");
+
+      const renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        alpha: true,
+      });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.domElement.style.position = "absolute";
+      webglContainer.appendChild(renderer.domElement);
+
+      const cssRenderer = new THREE.CSS3DRenderer();
+      cssRenderer.setSize(window.innerWidth, window.innerHeight);
+      cssRenderer.domElement.style.position = "absolute";
+      css3dContainer.appendChild(cssRenderer.domElement);
+
+      const scene = new THREE.Scene();
+      const cssScene = new THREE.Scene();
+      scene.fog = new THREE.FogExp2(0x000000, 0.001); // 黒い宇宙
+
+      const camera = new THREE.PerspectiveCamera(
+        60,
+        window.innerWidth / window.innerHeight,
+        1,
+        10000
+      );
+      camera.position.z = 100;
+
+      // --- 1. 背景：AI Face (集合知) の構築 ---
+      const particleCount = 2000;
+      const particles = new THREE.BufferGeometry();
+      const pPos = new Float32Array(particleCount * 3);
+      const pOriginalPos = new Float32Array(particleCount * 3); // 変形用ターゲット
+      const pVel = [];
+
+      // 顔の形状を計算する関数 (数式で近似)
+      function createFaceTargets() {
+        const arr = [];
+        for (let i = 0; i < particleCount; i++) {
+          // 球面座標ベースだが、顔っぽく歪める
+          const u = Math.random();
+          const v = Math.random();
+          const theta = 2 * Math.PI * u;
+          const phi = Math.acos(2 * v - 1);
+
+          let r = 600; // 基本半径
+
+          // 座標変換
+          let x = r * Math.sin(phi) * Math.cos(theta);
+          let y = r * Math.sin(phi) * Math.sin(theta);
+          let z = r * Math.cos(phi);
+
+          // 顔の造形（プロシージャル変形）
+          // 縦長にする
+          y *= 1.4;
+          // 後ろ半分を削る（マスクのように）
+          if (z < 0) {
+            z *= 0.1; // 奥行きを潰す
+          }
+          // 顎を尖らせる
+          if (y < 0) {
+            x *= 0.8;
+            z *= 0.9;
+          }
+
+          // 目のあたりの空洞を作る
+          if (
+            y > 100 &&
+            y < 300 &&
+            Math.abs(x) > 100 &&
+            Math.abs(x) < 250 &&
+            z > 300
+          ) {
+            z -= 100; // 凹ませる
+          }
+
+          arr.push({ x, y, z });
+        }
+        return arr;
+      }
+
+      const faceTargets = createFaceTargets();
+
+      for (let i = 0; i < particleCount; i++) {
+        const t = faceTargets[i];
+        pPos[i * 3] = t.x;
+        pPos[i * 3 + 1] = t.y;
+        pPos[i * 3 + 2] = t.z;
+
+        pOriginalPos[i * 3] = t.x;
+        pOriginalPos[i * 3 + 1] = t.y;
+        pOriginalPos[i * 3 + 2] = t.z;
+
+        pVel.push({ x: 0, y: 0, z: 0 });
+      }
+      particles.setAttribute("position", new THREE.BufferAttribute(pPos, 3));
+
+      // パーティクルマテリアル
+      const spriteCanvas = document.createElement("canvas");
+      spriteCanvas.width = 32;
+      spriteCanvas.height = 32;
+      const ctx = spriteCanvas.getContext("2d");
+      const grad = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+      grad.addColorStop(0, "white");
+      grad.addColorStop(0.2, "#00f3ff");
+      grad.addColorStop(1, "transparent");
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 32, 32);
+      const tex = new THREE.CanvasTexture(spriteCanvas);
+
+      const pMat = new THREE.PointsMaterial({
+        size: 6,
+        map: tex,
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.8,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      const particleSystem = new THREE.Points(particles, pMat);
+      scene.add(particleSystem);
+
+      // 線とAIラベル (詳細モード用)
+      const lineGeo = new THREE.BufferGeometry();
+      const linePosArr = new Float32Array(CONFIG.webNodeCount * 10 * 3);
+      lineGeo.setAttribute(
+        "position",
+        new THREE.BufferAttribute(linePosArr, 3)
+      );
+      const lineMat = new THREE.LineBasicMaterial({
+        color: 0x00f3ff,
+        transparent: true,
+        opacity: 0,
+      });
+      const bgLines = new THREE.LineSegments(lineGeo, lineMat);
+      scene.add(bgLines);
+
+      const textSprites = [];
+      function createTextSprite(text) {
+        const c = document.createElement("canvas");
+        c.width = 256;
+        c.height = 64;
+        const cx = c.getContext("2d");
+        cx.font = "Bold 24px Arial";
+        cx.fillStyle = "#00f3ff";
+        cx.textAlign = "center";
+        cx.fillText(text, 128, 40);
+        const t = new THREE.CanvasTexture(c);
+        const m = new THREE.SpriteMaterial({
+          map: t,
+          transparent: true,
+          opacity: 0,
+        });
+        const s = new THREE.Sprite(m);
+        s.scale.set(60, 15, 1);
+        return s;
+      }
+      for (let i = 0; i < CONFIG.webNodeCount * 2; i++) {
+        const s = createTextSprite(AI_RELATIONS[i % AI_RELATIONS.length]);
+        scene.add(s);
+        textSprites.push(s);
+      }
+
+      // --- 2. CSS3D Objects (Web Nodes) ---
+      const cssObjects = [];
+
+      for (let i = 0; i < CONFIG.webNodeCount; i++) {
+        const url = WIKI_URLS[i % WIKI_URLS.length];
+        const title = url.split("/").pop().replace(/_/g, " ");
+
+        const wrapper = document.createElement("div");
+        wrapper.className = "phone-node";
+
+        const header = document.createElement("div");
+        header.className = "header-bar";
+        header.innerHTML = `<span>${title}</span><span>AI NODE</span>`;
+        wrapper.appendChild(header);
+
+        const content = document.createElement("div");
+        content.className = "iframe-container";
+
+        const fallback = document.createElement("div");
+        fallback.className = "fallback-visual";
+        fallback.innerHTML = `<div class="fallback-title">${title}</div><div style="font-size:0.8rem; color:#666;">Double click to read</div>`;
+        content.appendChild(fallback);
+
+        const iframe = document.createElement("iframe");
+        iframe.src = url;
+        content.appendChild(iframe);
+
+        wrapper.appendChild(content);
+
+        const object = new THREE.CSS3DObject(wrapper);
+        object.position.set(0, 0, -20000);
+        object.scale.set(0.5, 0.5, 0.5);
+
+        cssScene.add(object);
+        cssObjects.push(object);
+
+        wrapper.userData = { object: object, url: url };
+        setupInteractions(header, wrapper, url);
+      }
+
+      // --- Interaction ---
+      function setupInteractions(handle, wrapper, url) {
+        let isDragging = false;
+        let startMouse = { x: 0, y: 0 };
+        let startPos = { x: 0, y: 0 };
+
+        handle.addEventListener("mousedown", (e) => {
+          isDragging = true;
+          wrapper.classList.add("dragging");
+          startMouse = { x: e.clientX, y: e.clientY };
+          const obj = wrapper.userData.object;
+          startPos = { x: obj.position.x, y: obj.position.y };
+          window.addEventListener("mousemove", onMouseMove);
+          window.addEventListener("mouseup", onMouseUp);
+          e.preventDefault();
+        });
+
+        function onMouseMove(e) {
+          if (!isDragging) return;
+          const dx = e.clientX - startMouse.x;
+          const dy = e.clientY - startMouse.y;
+          const moveScale = 3.0;
+          const obj = wrapper.userData.object;
+          obj.position.x = startPos.x + dx * moveScale;
+          obj.position.y = startPos.y - dy * moveScale;
+        }
+
+        function onMouseUp() {
+          isDragging = false;
+          wrapper.classList.remove("dragging");
+          window.removeEventListener("mousemove", onMouseMove);
+          window.removeEventListener("mouseup", onMouseUp);
+        }
+
+        wrapper.addEventListener("dblclick", () => {
+          openExpanded(url);
+        });
+      }
+
+      const expandedOverlay = document.getElementById("expanded-overlay");
+      const expandedIframe = document.getElementById("expanded-iframe");
+      function openExpanded(url) {
+        expandedIframe.src = url;
+        expandedOverlay.classList.add("active");
+      }
+      window.closeExpanded = () => {
+        expandedOverlay.classList.remove("active");
+        setTimeout(() => {
+          expandedIframe.src = "";
+        }, 300);
+      };
+
+      // --- Mouse Interaction (Face Distortion) ---
+      const mouse = new THREE.Vector2();
+      const mouse3D = new THREE.Vector3();
+      window.addEventListener("mousemove", (e) => {
+        mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+        mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+
+        const vec = new THREE.Vector3(mouse.x, mouse.y, 0.5);
+        vec.unproject(camera);
+        const dir = vec.sub(camera.position).normalize();
+        const dist = -camera.position.z / dir.z;
+        const pos = camera.position.clone().add(dir.multiplyScalar(dist));
+        mouse3D.copy(pos);
+      });
+
+      // --- State & Scroll ---
+      let currentSection = 0;
+      let isDetailMode = false;
+      let cameraTargetZ = 100;
+
+      window.addEventListener("scroll", () => {
+        const scrollY = window.scrollY;
+
+        if (!isDetailMode) {
+          const h = window.innerHeight;
+          const idx = Math.floor((scrollY + h * 0.5) / h);
+          if (idx !== currentSection && idx >= 0 && idx < 5) {
+            currentSection = idx;
+            document.querySelectorAll(".section").forEach((el, i) => {
+              if (i === idx) el.classList.add("active");
+              else el.classList.remove("active");
+            });
+          }
+        } else {
+          const maxScroll = document.body.scrollHeight - window.innerHeight;
+          const progress = scrollY / maxScroll;
+          // 3500 -> -5000 (奥へ進む)
+          cameraTargetZ = 3500 - progress * 8500;
+        }
+      });
+
+      // --- Transition: Dive into Face ---
+      window.enterDetail = (type) => {
+        isDetailMode = true;
+        document.body.classList.add("detail-mode");
+        window.scrollTo(0, 0);
+
+        // フラッシュ演出
+        const flash = document.getElementById("flash-overlay");
+        flash.style.transition = "opacity 0.1s";
+        flash.style.opacity = 1;
+        setTimeout(() => {
+          flash.style.transition = "opacity 1s";
+          flash.style.opacity = 0;
+        }, 100);
+
+        // カメラ位置: 顔の中へ飛び込む
+        // 実際は一旦手前(3500)にセットして、そこからスクロールで進む形式にする
+        camera.position.z = 3500;
+        cameraTargetZ = 3500;
+
+        // 顔パーティクルを拡散（宇宙空間の星にする）
+        for (let i = 0; i < particleCount; i++) {
+          pOriginalPos[i * 3] = (Math.random() - 0.5) * 10000;
+          pOriginalPos[i * 3 + 1] = (Math.random() - 0.5) * 10000;
+          pOriginalPos[i * 3 + 2] = (Math.random() - 0.5) * 10000;
+        }
+
+        // 線を表示
+        new TWEEN.Tween(bgLines.material).to({ opacity: 0.3 }, 2000).start();
+
+        // Web Cluster配置
+        cssObjects.forEach((obj, i) => {
+          // フィボナッチ配置
+          const phi = Math.acos(-1 + (2 * i) / CONFIG.webNodeCount);
+          const theta = Math.sqrt(CONFIG.webNodeCount * Math.PI) * phi;
+          const spread = 1200;
+          const tx = spread * Math.cos(theta) * Math.sin(phi);
+          const ty = spread * Math.sin(theta) * Math.sin(phi);
+          const tz = spread * Math.cos(phi);
+
+          const startX = (Math.random() - 0.5) * 10000;
+          const startY = (Math.random() - 0.5) * 10000;
+          obj.position.set(startX, startY, -5000);
+
+          new TWEEN.Tween(obj.position)
+            .to({ x: tx, y: ty, z: tz }, 2000)
+            .easing(TWEEN.Easing.Exponential.Out)
+            .delay(Math.random() * 500)
+            .start();
+        });
+      };
+
+      window.exitDetail = () => {
+        location.reload(); // 状態リセットのためリロードが一番安全
+      };
+
+      // --- Loop ---
+      function animate() {
+        requestAnimationFrame(animate);
+        TWEEN.update();
+
+        // 1. パーティクル更新 (顔の揺らぎ or 拡散)
+        const positions = particleSystem.geometry.attributes.position.array;
+
+        for (let i = 0; i < particleCount; i++) {
+          // 目標位置への移動 (Lerp)
+          const targetX = pOriginalPos[i * 3];
+          const targetY = pOriginalPos[i * 3 + 1];
+          const targetZ = pOriginalPos[i * 3 + 2];
+
+          // 現在位置
+          let cx = positions[i * 3];
+          let cy = positions[i * 3 + 1];
+          let cz = positions[i * 3 + 2];
+
+          // メインモードでのマウス干渉 (顔が歪む)
+          if (!isDetailMode) {
+            const dx = cx - mouse3D.x;
+            const dy = cy - mouse3D.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < 500) {
+              const force = (500 - dist) / 500;
+              cx += dx * force * 0.1;
+              cy += dy * force * 0.1;
+            }
+          }
+
+          // Lerp
+          positions[i * 3] += (targetX - cx) * 0.05;
+          positions[i * 3 + 1] += (targetY - cy) * 0.05;
+          positions[i * 3 + 2] += (targetZ - cz) * 0.05;
+        }
+        particleSystem.geometry.attributes.position.needsUpdate = true;
+
+        // 2. 詳細モード: 線とラベルの更新
+        if (isDetailMode) {
+          camera.position.z += (cameraTargetZ - camera.position.z) * 0.05;
+          camera.lookAt(0, 0, -2000);
+
+          // 線更新
+          const lPos = bgLines.geometry.attributes.position.array;
+          let lIdx = 0;
+          let tIdx = 0;
+          for (let i = 0; i < CONFIG.webNodeCount; i++) {
+            const p1 = cssObjects[i].position;
+            // 近隣接続
+            const neighbors = [
+              (i + 1) % CONFIG.webNodeCount,
+              (i + 3) % CONFIG.webNodeCount,
+            ];
+            neighbors.forEach((n) => {
+              const p2 = cssObjects[n].position;
+              lPos[lIdx++] = p1.x;
+              lPos[lIdx++] = p1.y;
+              lPos[lIdx++] = p1.z;
+              lPos[lIdx++] = p2.x;
+              lPos[lIdx++] = p2.y;
+              lPos[lIdx++] = p2.z;
+
+              // ラベル配置
+              if (tIdx < textSprites.length) {
+                const s = textSprites[tIdx++];
+                s.position.set(
+                  (p1.x + p2.x) / 2,
+                  (p1.y + p2.y) / 2 + 30,
+                  (p1.z + p2.z) / 2
+                );
+                s.material.opacity = 1;
+              }
+            });
+          }
+          bgLines.geometry.attributes.position.needsUpdate = true;
+
+          // 浮遊
+          const time = Date.now() * 0.001;
+          cssObjects.forEach(
+            (obj, i) => (obj.position.y += Math.sin(time + i) * 0.5)
+          );
+        } else {
+          // メインモード
+          camera.lookAt(0, 0, 0);
+          const t = Date.now() * 0.0002;
+          camera.position.x = Math.sin(t) * 50;
+          particleSystem.rotation.y += 0.001; // 顔をゆっくり回す
+        }
+
+        renderer.render(scene, camera);
+        cssRenderer.render(cssScene, camera);
+      }
+
+      window.addEventListener("resize", () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        cssRenderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      animate();
+      document.querySelector(".section").classList.add("active");
+    </script>
+  </body>
+</html>
